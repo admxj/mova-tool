@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TMC 机票/酒店下单调试工具</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img class="logo" src="./assets/tmc-logo.png" width="34" height="34" alt="TMC" />
+      <div>
+        <h1>下单调试工具</h1>
+        <p>机票 · 酒店 · 查询 / 下单 / 支付</p>
+      </div>
+    </div>
+    <nav class="tabs">
+      <button class="tab active" data-view="flight">机票</button>
+      <button class="tab" data-view="hotel">酒店</button>
+      <button class="tab" data-view="login">登录</button>
+      <button class="tab" data-view="settings">接口配置</button>
+      <button class="tab" data-view="logs">请求日志 <span id="log-count" class="pill hidden">0</span></button>
+    </nav>
+    <div class="status">
+      <span id="env-badge" class="badge">未配置接口</span>
+      <span id="token-badge" class="badge warn">未登录</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="content" id="content">
+      <!-- ==================== 机票 ==================== -->
+      <div class="view active" id="view-flight">
+        <div class="view-head">
+          <div>
+            <h2>机票下单流程</h2>
+            <p>搜索 → 选航班号 → 选报价 → 验价 → 创单 → 支付。乘机人可从常旅客接口拉取。</p>
+          </div>
+          <button class="ghost" id="btn-flight-reset">重置流程</button>
+        </div>
+
+        <section class="step" id="f-step-1">
+          <div class="step-head">
+            <span class="num">1</span>
+            <h3>航班搜索</h3>
+            <code>POST /flight/search</code>
+          </div>
+          <div class="grid">
+            <label>出行性质
+              <select id="f-purpose">
+                <option value="BUSINESS">因公 BUSINESS</option>
+                <option value="PRIVATE">因私 PRIVATE</option>
+              </select>
+            </label>
+            <label>行程类型
+              <select id="f-travelType">
+                <option value="OW">单程 OW</option>
+                <option value="RT">往返 RT</option>
+                <option value="OJ">缺口程 OJ</option>
+              </select>
+            </label>
+            <label>出发三字码 <input id="f-depCode" placeholder="PEK" value="PEK" /></label>
+            <label>出发类型
+              <select id="f-depType"><option value="AIRPORT">AIRPORT</option><option value="CITY">CITY</option></select>
+            </label>
+            <label>到达三字码 <input id="f-arrCode" placeholder="SHA" value="SHA" /></label>
+            <label>到达类型
+              <select id="f-arrType"><option value="AIRPORT">AIRPORT</option><option value="CITY">CITY</option></select>
+            </label>
+            <label>出发日期 <input id="f-depDate" type="date" /></label>
+            <label>返程日期 <input id="f-returnDate" type="date" /></label>
+            <label>成人 <input id="f-adult" type="number" min="1" value="1" /></label>
+            <label>儿童 <input id="f-child" type="number" min="0" value="0" /></label>
+            <label>婴儿 <input id="f-infant" type="number" min="0" value="0" /></label>
+          </div>
+          <div class="hint" id="f-purpose-hint" hidden>因私机票仅支持单航段、单乘机人，乘机人须与登录人本人实名一致；下单时行程类型会自动按单程提交。</div>
+          <div id="f-json-search"></div>
+          <div class="actions">
+            <button class="primary" id="btn-f-search">查询航班</button>
+            <span class="hint" id="f-search-hint"></span>
+          </div>
+          <div id="f-routes" class="results"></div>
+        </section>
+
+        <section class="step muted" id="f-step-2">
+          <div class="step-head">
+            <span class="num">2</span>
+            <h3>选择航班报价</h3>
+            <code>POST /flight/searchProduct · /flight/searchDetail</code>
+          </div>
+          <div id="f-json-detail"></div>
+          <div class="actions">
+            <button class="ghost" id="btn-f-products" disabled>按 guid 重新拉取报价</button>
+            <button class="ghost" id="btn-f-detail" disabled>查询报价详情（detailKey）</button>
+            <span class="hint" id="f-selected-hint">先在上一步选择航班号</span>
+          </div>
+          <div id="f-products" class="results"></div>
+          <div id="f-detail-info" class="results"></div>
+        </section>
+
+        <section class="step muted" id="f-step-3">
+          <div class="step-head">
+            <span class="num">3</span>
+            <h3>乘机人 / 验价</h3>
+            <code>POST /air/order/price</code>
+          </div>
+          <div class="actions" style="margin-bottom:10px">
+            <button class="ghost" id="btn-f-passengers">拉取常旅客</button>
+            <span class="hint" id="f-passenger-hint">POST /passenger/list，点选后自动填入乘机人</span>
+          </div>
+          <div id="f-passengers" class="pax-list"></div>
+          <div class="grid">
+            <label>乘机人姓名 <input id="f-p-name" placeholder="张三" /></label>
+            <label>证件类型 <select id="f-p-cardType">
+              <option value="NI">身份证</option>
+              <option value="P">护照</option>
+              <option value="GG">港澳通行证</option>
+              <option value="PP">台湾通行证</option>
+              <option value="TW">台湾居民来往大陆通行证</option>
+              <option value="GP">外国人永久居留身份证</option>
+              <option value="OB">其他证件</option>
+            </select></label>
+            <label>证件号 <input id="f-p-cardNo" placeholder="110101199001011234" /></label>
+            <label>手机号 <input id="f-p-phone" placeholder="13800000000" /></label>
+            <label>联系人 <input id="f-contact-name" placeholder="张三" /></label>
+            <label>联系人手机 <input id="f-contact-phone" placeholder="13800000000" /></label>
+          </div>
+          <div id="f-json-price"></div>
+          <div class="actions">
+            <button class="primary" id="btn-f-price" disabled>验价 / 取 quoteToken</button>
+            <span class="hint" id="f-price-hint"></span>
+          </div>
+          <div id="f-quote" class="results"></div>
+        </section>
+
+        <section class="step muted" id="f-step-4">
+          <div class="step-head">
+            <span class="num">4</span>
+            <h3>创建订单</h3>
+            <code>POST /air/order/create</code>
+          </div>
+          <div class="grid">
+            <label>员工姓名 <input id="f-employeeName" placeholder="张三" /></label>
+            <label>申请单号 applyNo <input id="f-applyNo" placeholder="可选" /></label>
+            <label>超标原因 <input id="f-overageReason" placeholder="可选，如 OTHER" /></label>
+          </div>
+          <div id="f-json-create"></div>
+          <div class="actions">
+            <button class="primary" id="btn-f-create" disabled>创建订单</button>
+            <span class="hint" id="f-create-hint"></span>
+          </div>
+          <div id="f-order" class="results"></div>
+        </section>
+
+        <section class="step muted" id="f-step-5">
+          <div class="step-head">
+            <span class="num">5</span>
+            <h3>支付 / 查单</h3>
+            <code>POST /air/order/pay · /pay/alipay</code>
+          </div>
+          <div class="grid">
+            <label>订单号 <input id="f-orderNo" placeholder="下单后自动填入" /></label>
+            <label>支付方式 payMethod <input id="f-payMethod" placeholder="可选，供应商 zffs" /></label>
+          </div>
+          <div class="actions">
+            <button class="primary" id="btn-f-pay" disabled>支付（zfyz=1）</button>
+            <button class="ghost" id="btn-f-alipay" disabled>支付宝参数</button>
+            <button class="ghost" id="btn-f-order-detail" disabled>查询订单详情</button>
+            <button class="ghost" id="btn-f-cancel" disabled>取消订单</button>
+          </div>
+          <div id="f-pay" class="results"></div>
+        </section>
+      </div>
+
+      <!-- ==================== 酒店 ==================== -->
+      <div class="view" id="view-hotel">
+        <div class="view-head">
+          <div>
+            <h2>酒店下单流程</h2>
+            <p>搜索 → 详情选房型 → 验价 → 创单 → 支付。字段来自 H5 的 hotel 接口契约。</p>
+          </div>
+          <button class="ghost" id="btn-hotel-reset">重置流程</button>
+        </div>
+
+        <section class="step" id="h-step-1">
+          <div class="step-head">
+            <span class="num">1</span>
+            <h3>酒店搜索</h3>
+            <code>POST /hotel/search</code>
+          </div>
+          <div class="grid">
+            <label>出行性质
+              <select id="h-purpose">
+                <option value="BUSINESS">因公 BUSINESS</option>
+                <option value="PRIVATE">因私 PRIVATE</option>
+              </select>
+            </label>
+            <label class="combo-field">城市编码 cityCode
+              <span class="combo">
+                <input id="h-cityCode" placeholder="输入城市名 / 三字码搜索" autocomplete="off" />
+                <div class="combo-list" id="h-city-options" hidden></div>
+              </span>
+            </label>
+            <label>城市名称 <input id="h-cityName" placeholder="北京" /></label>
+            <label>入住日期 <input id="h-checkIn" type="date" /></label>
+            <label>离店日期 <input id="h-checkOut" type="date" /></label>
+            <label>每页数量 <input id="h-pageSize" type="number" value="10" /></label>
+          </div>
+          <div class="hint" id="h-purpose-hint" hidden>因私酒店仅支持本人预订一间房（1 间 1 人），入住/离店日期须在今天至未来 30 天内，入住人须与登录人本人实名一致。</div>
+          <div id="h-json-search"></div>
+          <div class="actions">
+            <button class="primary" id="btn-h-search">搜索酒店</button>
+            <span class="hint" id="h-search-hint"></span>
+          </div>
+          <div id="h-hotels" class="results"></div>
+        </section>
+
+        <section class="step muted" id="h-step-2">
+          <div class="step-head">
+            <span class="num">2</span>
+            <h3>酒店详情 / 选房型</h3>
+            <code>POST /hotel/detail</code>
+          </div>
+          <div class="grid">
+            <label>酒店 ID <input id="h-hotelId" placeholder="搜索后自动填入" /></label>
+            <label>供应商酒店 ID <input id="h-supplierHotelId" placeholder="可选" /></label>
+          </div>
+          <div id="h-json-detail"></div>
+          <div id="h-json-room"></div>
+          <div class="actions">
+            <button class="primary" id="btn-h-detail" disabled>查询详情与房型</button>
+            <span class="hint" id="h-selected-hint"></span>
+          </div>
+          <div id="h-rooms" class="results"></div>
+        </section>
+
+        <section class="step muted" id="h-step-3">
+          <div class="step-head">
+            <span class="num">3</span>
+            <h3>入住人 / 验价</h3>
+            <code>POST /hotel/orders/price</code>
+          </div>
+          <div class="grid">
+            <label>入住人姓名 <input id="h-g-name" placeholder="张三" /></label>
+            <label>证件类型 <select id="h-g-cardType">
+              <option value="NI">身份证</option>
+              <option value="P">护照</option>
+              <option value="GG">港澳通行证</option>
+              <option value="PP">台湾通行证</option>
+              <option value="TW">台湾居民来往大陆通行证</option>
+              <option value="GP">外国人永久居留身份证</option>
+              <option value="OB">其他证件</option>
+            </select></label>
+            <label>证件号 <input id="h-g-cardNo" placeholder="110101199001011234" /></label>
+            <label>手机号 <input id="h-g-phone" placeholder="13800000000" /></label>
+            <label>联系人 <input id="h-contact-name" placeholder="张三" /></label>
+            <label>联系人手机 <input id="h-contact-phone" placeholder="13800000000" /></label>
+          </div>
+          <div class="actions">
+            <button class="ghost small" id="btn-h-passengers">拉取常旅客</button>
+            <span class="hint" id="h-pax-hint">从常用出行人选择入住人，自动填入姓名、证件与手机号</span>
+          </div>
+          <div id="h-passengers" class="pax-list"></div>
+          <div id="h-json-price"></div>
+          <div class="actions">
+            <button class="primary" id="btn-h-price" disabled>验价 / 取 quoteToken</button>
+            <span class="hint" id="h-price-hint"></span>
+          </div>
+          <div id="h-quote" class="results"></div>
+        </section>
+
+        <section class="step muted" id="h-step-4">
+          <div class="step-head">
+            <span class="num">4</span>
+            <h3>创建酒店订单</h3>
+            <code>POST /hotel/orders/create</code>
+          </div>
+          <div class="grid">
+            <label>申请单号 applyNo <input id="h-applyNo" placeholder="可选" /></label>
+            <label>超标原因 <input id="h-overageReason" placeholder="可选" /></label>
+          </div>
+          <div id="h-json-create"></div>
+          <div class="actions">
+            <button class="primary" id="btn-h-create" disabled>创建订单</button>
+            <span class="hint" id="h-create-hint"></span>
+          </div>
+          <div id="h-order" class="results"></div>
+        </section>
+
+        <section class="step muted" id="h-step-5">
+          <div class="step-head">
+            <span class="num">5</span>
+            <h3>支付 / 查单</h3>
+            <code>POST /hotel/orders/{orderNo}/pay</code>
+          </div>
+          <div class="grid">
+            <label>订单号 <input id="h-orderNo" placeholder="下单后自动填入" /></label>
+          </div>
+          <div class="actions">
+            <button class="primary" id="btn-h-pay" disabled>确认企业支付</button>
+            <button class="ghost" id="btn-h-pay-status" disabled>查询支付状态</button>
+            <button class="ghost" id="btn-h-alipay" disabled>个人支付宝支付</button>
+            <button class="ghost" id="btn-h-order-detail" disabled>订单详情</button>
+          </div>
+          <div id="h-pay" class="results"></div>
+        </section>
+      </div>
+
+      <!-- ==================== 登录 ==================== -->
+      <div class="view" id="view-login">
+        <div class="view-head">
+          <div>
+            <h2>登录</h2>
+            <p>登录接口走 Go 网关（默认前缀 <code>/goco/api</code>）。登录成功后 token 会作为 <code>Authorization: Bearer</code> 注入所有业务请求。</p>
+          </div>
+        </div>
+
+        <div class="subtabs">
+          <button class="subtab active" data-login-mode="account">用户名密码</button>
+          <button class="subtab" data-login-mode="sms">手机号验证码</button>
+          <button class="subtab" data-login-mode="token">直接输入 Token</button>
+        </div>
+
+        <section class="step" data-login-panel="account">
+          <div class="grid">
+            <label>账号 / 手机号 <input id="login-account" autocomplete="off" /></label>
+            <label>密码 <input id="login-password" type="password" autocomplete="off" /></label>
+            <label>租户编码（可选） <input id="login-tenant" placeholder="tenantCode" /></label>
+            <label>图形验证码 ID（可选） <input id="login-captchaId" /></label>
+            <label>图形验证码（可选） <input id="login-captchaCode" /></label>
+          </div>
+          <div class="actions">
+            <button class="primary" id="btn-login-account">登录</button>
+            <span class="hint" id="login-account-hint"></span>
+          </div>
+          <div id="login-tenants" class="results"></div>
+        </section>
+
+        <section class="step hidden" data-login-panel="sms">
+          <div class="grid">
+            <label>手机号 <input id="login-mobile" /></label>
+            <label>短信验证码 <input id="login-smsCode" /></label>
+            <label>租户编码（可选） <input id="login-sms-tenant" /></label>
+          </div>
+          <div class="actions">
+            <button class="ghost" id="btn-send-sms">发送验证码</button>
+            <button class="primary" id="btn-login-sms">验证码登录</button>
+            <span class="hint" id="login-sms-hint"></span>
+          </div>
+        </section>
+
+        <section class="step hidden" data-login-panel="token">
+          <div class="grid wide">
+            <label>Token <input id="login-token-input" placeholder="粘贴 preAuthToken / 正式 token" /></label>
+          </div>
+          <div class="actions">
+            <button class="primary" id="btn-login-token">保存并验证</button>
+            <button class="ghost" id="btn-logout">清除登录态</button>
+            <span class="hint" id="login-token-hint"></span>
+          </div>
+          <div id="login-userinfo" class="results"></div>
+        </section>
+      </div>
+
+      <!-- ==================== 接口配置 ==================== -->
+      <div class="view" id="view-settings">
+        <div class="view-head">
+          <div>
+            <h2>接口配置</h2>
+            <p>域名与前缀都可改；业务请求默认拼 <code>javaBase + javaPrefix + path</code>，登录请求拼 <code>goBase + goPrefix + path</code>。</p>
+          </div>
+        </div>
+        <section class="step">
+          <div class="grid wide">
+            <label>Java 业务域名 <input id="s-java-base" placeholder="https://api.example.com" /></label>
+            <label>Java 前缀 <input id="s-java-prefix" placeholder="/api" /></label>
+            <label>Go 登录域名 <input id="s-go-base" placeholder="https://login.example.com" /></label>
+            <label>Go 前缀 <input id="s-go-prefix" placeholder="/goco/api" /></label>
+            <label>默认租户编码 <input id="s-tenant" placeholder="tenantCode，可选" /></label>
+          </div>
+          <div class="actions">
+            <button class="primary" id="btn-save-settings">保存配置</button>
+            <span class="hint" id="settings-hint">配置保存在本机 localStorage</span>
+          </div>
+        </section>
+
+        <section class="step">
+          <div class="step-head"><h3>拼接示例</h3></div>
+          <pre id="settings-preview" class="code"></pre>
+        </section>
+      </div>
+
+      <!-- ==================== 日志 ==================== -->
+      <div class="view" id="view-logs">
+        <div class="view-head">
+          <div>
+            <h2>请求日志</h2>
+            <p>本次运行内的所有请求；点击一条可在右侧查看完整请求与响应。</p>
+          </div>
+          <div class="actions">
+            <button class="ghost" id="btn-clear-logs">清空</button>
+          </div>
+        </div>
+        <div id="log-list" class="log-list"></div>
+      </div>
+    </section>
+
+    <aside class="inspector" id="inspector">
+      <div class="inspector-head">
+        <div class="segmented">
+          <button class="seg active" data-insp="response">响应</button>
+          <button class="seg" data-insp="request">请求</button>
+        </div>
+        <div class="inspector-actions">
+          <button class="ghost small" id="btn-copy-req" title="复制请求体">复制请求</button>
+          <button class="ghost small" id="btn-copy-res" title="复制响应体">复制响应</button>
+          <button class="ghost small" id="btn-clear-insp">清空</button>
+        </div>
+      </div>
+      <div class="inspector-url">
+        <span>URL</span>
+        <code id="insp-url">-</code>
+        <button class="ghost small" id="btn-copy-url" title="复制完整 URL">复制</button>
+      </div>
+      <div class="inspector-meta" id="insp-meta">等待请求…</div>
+      <div class="insp-find" id="insp-find" hidden>
+        <input id="insp-find-input" placeholder="在响应/请求中查找（Ctrl+F）" autocomplete="off" spellcheck="false" />
+        <span class="insp-find-count" id="insp-find-count">0/0</span>
+        <button class="ghost small" id="btn-find-prev" title="上一个（Shift+Enter）">上一个</button>
+        <button class="ghost small" id="btn-find-next" title="下一个（Enter）">下一个</button>
+        <button class="ghost small" id="btn-find-close" title="关闭（Esc）">关闭</button>
+      </div>
+      <pre class="inspector-body" id="insp-body">执行任一步骤后，这里显示最近一次请求或响应。</pre>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="./lib.js"></script>
+  <script src="./flight.js"></script>
+  <script src="./hotel.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
