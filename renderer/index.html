@@ -356,7 +356,7 @@
         <div class="view-head">
           <div>
             <h2>登录</h2>
-            <p>登录接口走 Go 网关（默认前缀 <code>/goco/api</code>）。登录成功后 token 会作为 <code>Authorization: Bearer</code> 注入所有业务请求。</p>
+            <p>登录接口走 Go 网关（默认前缀 <code>/goco</code>）。登录成功后 token 会作为 <code>Authorization: Bearer</code> 注入所有业务请求。</p>
           </div>
         </div>
 
@@ -412,16 +412,18 @@
         <div class="view-head">
           <div>
             <h2>接口配置</h2>
-            <p>域名与前缀都可改；业务请求默认拼 <code>javaBase + javaPrefix + path</code>，登录请求拼 <code>goBase + goPrefix + path</code>。</p>
+            <p>Java 业务和 Go 登录共用所选环境域名。Java travel 接口拼接 <code>/api/tmc</code>，Go co 登录接口拼接 <code>/goco</code>。保存切换后需重新登录。</p>
           </div>
         </div>
         <section class="step">
           <div class="grid wide">
-            <label>Java 业务域名 <input id="s-java-base" placeholder="https://api.example.com" /></label>
-            <label>Java 前缀 <input id="s-java-prefix" placeholder="/api" /></label>
-            <label>Go 登录域名 <input id="s-go-base" placeholder="https://login.example.com" /></label>
-            <label>Go 前缀 <input id="s-go-prefix" placeholder="/goco/api" /></label>
-            <label>默认租户编码 <input id="s-tenant" placeholder="tenantCode，可选" /></label>
+            <label>接口环境
+              <select id="s-environment">
+                <option value="uat">UAT</option>
+                <option value="production">线上</option>
+              </select>
+            </label>
+            <label>默认租户编码 <input id="s-tenant" placeholder="E001" /></label>
           </div>
           <div class="actions">
             <button class="primary" id="btn-save-settings">保存配置</button>

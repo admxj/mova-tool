@@ -5,6 +5,7 @@
   const {
     $, qa, esc, toast, settings, saveSettings, session, setToken, refreshBadges,
     api, goData, state, uid, renderInspector, copyText,
+    environments, defaultTenant, buildUrl,
   } = window.TMC;
 
   /* ---------------- 视图切换 ---------------- */
@@ -31,53 +32,49 @@
 
   /* ---------------- 设置 ---------------- */
 
+  let environmentRevision = 0;
+
   function fillSettingsForm() {
-    $('s-java-base').value = settings.javaBase || '';
-    $('s-java-prefix').value = settings.javaPrefix || '/api';
-    $('s-go-base').value = settings.goBase || '';
-    $('s-go-prefix').value = settings.goPrefix || '/goco/api';
-    $('s-tenant').value = settings.tenantCode || '';
-    $('login-tenant').value = settings.tenantCode || '';
-    $('login-sms-tenant').value = settings.tenantCode || '';
+    $('s-environment').value = settings.environment;
+    $('s-tenant').value = settings.tenantCode;
+    $('login-tenant').value = settings.tenantCode;
+    $('login-sms-tenant').value = settings.tenantCode;
     renderSettingsPreview();
   }
 
   function renderSettingsPreview() {
-    const preview = $('settings-preview');
-    if (!preview) return;
-    const javaBase = ($('s-java-base').value || 'https://java.example.com').replace(/\/+$/, '');
-    const javaPrefix = ($('s-java-prefix').value || '/api').replace(/\/+$/, '');
-    const goBase = ($('s-go-base').value || 'https://go.example.com').replace(/\/+$/, '');
-    const goPrefix = ($('s-go-prefix').value || '/goco/api').replace(/\/+$/, '');
-    preview.textContent = [
-      `机票搜索  POST ${javaBase}${javaPrefix}/flight/search`,
-      `机票验价  POST ${javaBase}${javaPrefix}/air/order/price`,
-      `酒店搜索  POST ${javaBase}${javaPrefix}/hotel/search`,
-      `酒店验价  POST ${javaBase}${javaPrefix}/hotel/orders/price`,
-      `账号登录  POST ${goBase}${goPrefix}/v1/co/front/login`,
+    const environment = $('s-environment').value;
+    const url = (service, path) => buildUrl(service, path, undefined, environment);
+    $('settings-preview').textContent = [
+      `机票搜索  POST ${url('java', '/flight/search')}`,
+      `机票验价  POST ${url('java', '/air/order/price')}`,
+      `酒店搜索  POST ${url('java', '/hotel/search')}`,
+      `酒店验价  POST ${url('java', '/hotel/orders/price')}`,
+      `账号登录  POST ${url('go', '/v1/co/front/login')}`,
     ].join('\n');
   }
 
   $('btn-save-settings').addEventListener('click', () => {
-    const javaBase = $('s-java-base').value.trim();
-    const goBase = $('s-go-base').value.trim();
-    if (javaBase && !/^https?:\/\//.test(javaBase)) return toast('Java 域名需以 http:// 或 https:// 开头', 'error');
-    if (goBase && !/^https?:\/\//.test(goBase)) return toast('Go 域名需以 http:// 或 https:// 开头', 'error');
-
-    settings.javaBase = javaBase;
-    settings.javaPrefix = $('s-java-prefix').value.trim() || '/api';
-    settings.goBase = goBase;
-    settings.goPrefix = $('s-go-prefix').value.trim() || '/goco/api';
-    settings.tenantCode = $('s-tenant').value.trim();
+    const environment = $('s-environment').value;
+    if (!Object.hasOwn(environments, environment)) return;
+    if (environment !== settings.environment) {
+      environmentRevision += 1;
+      setToken('', null);
+      for (const id of ['login-tenants', 'login-userinfo', 'login-account-hint', 'login-sms-hint', 'login-smsCode', 'login-captchaId', 'login-captchaCode']) {
+        const field = $(id);
+        if (field.tagName === 'INPUT') field.value = '';
+        else field.textContent = '';
+      }
+    }
+    settings.environment = environment;
+    settings.tenantCode = $('s-tenant').value.trim() || defaultTenant;
     saveSettings();
     fillSettingsForm();
     $('settings-hint').textContent = '已保存到本机 localStorage';
     toast('接口配置已保存', 'ok');
   });
 
-  ['s-java-base', 's-java-prefix', 's-go-base', 's-go-prefix'].forEach((id) => {
-    $(id).addEventListener('input', renderSettingsPreview);
-  });
+  $('s-environment').addEventListener('change', renderSettingsPreview);
 
   /* ---------------- 登录 ---------------- */
 
@@ -134,10 +131,12 @@
     container.querySelectorAll('[data-tenant-pick]').forEach((button) => {
       button.addEventListener('click', async () => {
         const tenant = tenants[Number(button.dataset.tenantPick)];
+        const revision = environmentRevision;
         const result = await api('go', '/v1/co/front/login/confirm', {
           body: { preAuthToken, tenantCode: tenant.tenantCode },
           auth: false,
         });
+        if (revision !== environmentRevision) return;
         try {
           const data = goData(result);
           const token = data && (data.token || data.preAuthToken);
@@ -158,7 +157,9 @@
 
   async function loadUserInfo() {
     if (!session.token) return null;
+    const revision = environmentRevision;
     const result = await api('go', '/v1/co/front/user/info', { method: 'GET' });
+    if (revision !== environmentRevision) return;
     try {
       const data = goData(result);
       session.userInfo = data;
@@ -196,7 +197,9 @@
     if (captchaId) body.captchaId = captchaId;
     if (captchaCode) body.captchaCode = captchaCode;
 
+    const revision = environmentRevision;
     const result = await api('go', '/v1/co/front/login', { body, auth: false });
+    if (revision !== environmentRevision) return;
     try {
       const data = goData(result);
       const applied = applyLoginData(data);
@@ -225,7 +228,9 @@
       browserId: browserId(),
       tenantCode: tenantCodeFrom($('login-sms-tenant').value, settings.tenantCode),
     };
+    const revision = environmentRevision;
     const result = await api('go', '/v1/co/front/login/sms', { body, auth: false });
+    if (revision !== environmentRevision) return;
     try {
       const applied = applyLoginData(goData(result));
       if (applied.needSelect) {

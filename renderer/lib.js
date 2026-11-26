@@ -35,13 +35,25 @@
     try { return JSON.parse(text); } catch { return text; }
   };
 
-  const settings = Object.assign({
-    javaBase: '',
-    javaPrefix: '/api',
-    goBase: '',
-    goPrefix: '/goco/api',
-    tenantCode: '',
-  }, JSON.parse(localStorage.getItem(STORE_SETTINGS) || '{}'));
+  const environments = Object.freeze({
+    uat: 'https://tmc-api-uat.movatrip.cn',
+    production: 'https://tmc-api.movatrip.cn',
+  });
+  const defaultTenant = 'E001';
+  const saved = JSON.parse(localStorage.getItem(STORE_SETTINGS) || '{}') || {};
+  const knownEnvironment = Object.hasOwn(environments, saved.environment);
+  if (!knownEnvironment && localStorage.getItem(STORE_TOKEN)) {
+    localStorage.removeItem(STORE_TOKEN);
+    localStorage.removeItem(STORE_USER);
+  }
+  const settings = {
+    environment: knownEnvironment ? saved.environment : 'uat',
+    tenantCode: saved.tenantCode || defaultTenant,
+    get javaBase() { return environments[this.environment]; },
+    get goBase() { return this.javaBase; },
+    get javaPrefix() { return '/api/tmc'; },
+    get goPrefix() { return '/goco'; },
+  };
 
   const session = {
     token: localStorage.getItem(STORE_TOKEN) || '',
@@ -60,7 +72,7 @@
   };
 
   function saveSettings() {
-    localStorage.setItem(STORE_SETTINGS, JSON.stringify(settings));
+    localStorage.setItem(STORE_SETTINGS, JSON.stringify({ environment: settings.environment, tenantCode: settings.tenantCode }));
     refreshBadges();
   }
 
@@ -81,12 +93,8 @@
     const tokenBadge = $('token-badge');
     if (!envBadge || !tokenBadge) return;
 
-    const javaReady = Boolean(settings.javaBase);
-    const goReady = Boolean(settings.goBase);
-    envBadge.textContent = javaReady || goReady
-      ? `Java ${javaReady ? '✓' : '—'} · Go ${goReady ? '✓' : '—'}`
-      : '未配置接口';
-    envBadge.className = `badge ${javaReady ? 'ok' : 'warn'}`;
+    envBadge.textContent = settings.environment === 'production' ? '线上环境' : 'UAT 环境';
+    envBadge.className = `badge ${settings.environment === 'production' ? 'warn' : 'ok'}`;
 
     if (session.token) {
       const name = session.userInfo && (session.userInfo.name || session.userInfo.employeeName);
@@ -128,8 +136,8 @@
     document.body.removeChild(ta);
   }
 
-  function buildUrl(service, path, query) {
-    const base = (service === 'go' ? settings.goBase : settings.javaBase).replace(/\/+$/, '');
+  function buildUrl(service, path, query, environment = settings.environment) {
+    const base = environments[environment];
     const prefix = (service === 'go' ? settings.goPrefix : settings.javaPrefix).replace(/\/+$/, '');
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     const url = new URL(`${base}${prefix}${normalizedPath}`);
@@ -143,10 +151,6 @@
 
   async function api(service, path, options) {
     const opts = options || {};
-    if (!(service === 'go' ? settings.goBase : settings.javaBase)) {
-      toast(`请先在「接口配置」填写 ${service === 'go' ? 'Go 登录' : 'Java 业务'}域名`, 'error');
-      return { ok: false, status: 0, error: '未配置域名' };
-    }
 
     let url;
     try {
@@ -569,6 +573,8 @@
   }
 
   window.TMC = {
+    environments,
+    defaultTenant,
     settings,
     session,
     state,

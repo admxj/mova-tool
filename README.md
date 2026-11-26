@@ -29,7 +29,7 @@ npm start
 ### 常见问题
 
 - 启动时报 `Cannot read properties of undefined (reading 'whenReady')`：当前 shell 设置了 `ELECTRON_RUN_AS_NODE=1`，Electron 被当作 Node 执行了。先 `unset ELECTRON_RUN_AS_NODE` 再启动。
-- 请求失败先看右侧 inspector 的 HTTP 状态与响应体；`未配置域名` 说明还没在「接口配置」里填 Java / Go 域名。
+- 请求失败先看右侧 inspector 的 HTTP 状态与响应体；也可在「接口配置」确认所选环境。
 
 ## 打包
 
@@ -73,11 +73,10 @@ npm run pack       # 只生成未压缩目录，快速验证
 
 | 配置 | 说明 | 默认 |
 | --- | --- | --- |
-| Java 业务域名 | 机票、酒店业务接口的 host | 空 |
-| Java 前缀 | 业务前缀，最终 URL = `javaBase + javaPrefix + path` | `/api` |
-| Go 登录域名 | 登录、用户信息接口的 host | 空 |
-| Go 前缀 | 登录前缀，最终 URL = `goBase + goPrefix + path` | `/goco/api` |
-| 默认租户编码 | 登录与业务请求里可选的 `tenantCode` | 空 |
+| 接口环境 | UAT：`https://tmc-api-uat.movatrip.cn`；线上：`https://tmc-api.movatrip.cn` | UAT |
+| 默认租户编码 | 登录与业务请求使用的默认 `tenantCode` | `E001` |
+
+Java travel 和 Go co 共用所选环境域名。Java 请求拼接 `/api/tmc` 和接口路径，Go 请求拼接 `/goco` 和接口路径。保存切换环境后需重新登录。
 
 配置保存在本机 `localStorage`（key：`tmc.settings.v1`），token 保存在 `tmc.token.v1`。登录成功后所有业务请求自动带 `Authorization: Bearer <token>`。
 
