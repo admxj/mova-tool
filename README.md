@@ -31,6 +31,42 @@ npm start
 - 启动时报 `Cannot read properties of undefined (reading 'whenReady')`：当前 shell 设置了 `ELECTRON_RUN_AS_NODE=1`，Electron 被当作 Node 执行了。先 `unset ELECTRON_RUN_AS_NODE` 再启动。
 - 请求失败先看右侧 inspector 的 HTTP 状态与响应体；`未配置域名` 说明还没在「接口配置」里填 Java / Go 域名。
 
+## 打包
+
+使用 electron-builder，一条命令生成 macOS（Intel + Apple Silicon）和 Windows 安装包：
+
+```bash
+npm install
+npm run dist
+```
+
+也可以分开打：
+
+```bash
+npm run dist:mac   # macOS x64 + arm64
+npm run dist:win   # Windows x64
+npm run pack       # 只生成未压缩目录，快速验证
+```
+
+产物在 `dist/`：
+
+| 文件 | 平台 |
+| --- | --- |
+| `TMC调试工具-1.0.0.dmg` | macOS Intel |
+| `TMC调试工具-1.0.0-mac.zip` | macOS Intel |
+| `TMC调试工具-1.0.0-arm64.dmg` | macOS Apple Silicon |
+| `TMC调试工具-1.0.0-arm64-mac.zip` | macOS Apple Silicon |
+| `TMC调试工具-1.0.0-x64-setup.exe` | Windows x64 安装包 |
+| `dist/mac/`、`dist/mac-arm64/`、`dist/win-unpacked/` | 未压缩应用目录 |
+
+说明：
+
+- macOS 未做代码签名（`mac.identity = null`），本机运行不受影响；复制到其他 Mac 后若提示「已损坏」或「无法验证开发者」，右键「打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/TMC调试工具.app"`。
+- Windows 安装包未签名，首次运行可能出现 SmartScreen 提示，点「更多信息 → 仍要运行」。
+- 在 macOS 上打 Windows 包时关闭了 `win.signAndEditExecutable`，所以 exe 使用 Electron 默认图标和版本信息；需要自定义 Windows 图标/版本信息时，在 Windows 机器上执行 `npm run dist:win`，或给 macOS 安装 wine 后把该选项改为 `true`。
+- 默认使用 Electron 图标；如需自定义 macOS 图标，把 `build/icon.icns` 放好后重新打包。
+- arm64 包只能在 Apple Silicon 上运行，无法在 Intel Mac 上启动。
+
 ## 配置
 
 进入「接口配置」：
