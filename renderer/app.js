@@ -10,6 +10,7 @@
   /* ---------------- 视图切换 ---------------- */
 
   function showView(name) {
+    window.BookingPreview.view(name);
     qa('.tab[data-view]').forEach((tab) => tab.classList.toggle('active', tab.dataset.view === name));
     qa('.view').forEach((view) => view.classList.toggle('active', view.id === `view-${name}`));
     if (name === 'logs') renderLogs();

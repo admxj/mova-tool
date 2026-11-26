@@ -18,6 +18,13 @@
 
   const boxes = {};
 
+  const CANCEL_REASON_LABELS = {
+    TRIP_CANCELLED: '行程取消',
+    TIME_CHANGED: '时间变更',
+    LOCATION_UNSUITABLE: '酒店位置不合适',
+    OTHER: '其他',
+  };
+
   const SEARCH_FORM_KEY = 'tmc.hotel.search.v1';
   const SEARCH_FORM_FIELDS = ['h-purpose', 'h-cityCode', 'h-cityName', 'h-checkIn', 'h-checkOut', 'h-pageSize'];
 
@@ -280,6 +287,12 @@
       button.addEventListener('click', () => {
         const hotel = state.hotels[Number(button.dataset.hotelPick)];
         state.hotel = hotel;
+        window.BookingPreview.hotel(hotel);
+        state.detail = state.room = state.product = state.quote = null;
+        for (const id of ['h-rooms', 'h-quote']) $(id).innerHTML = '';
+        for (const id of ['btn-h-price', 'btn-h-create']) $(id).disabled = true;
+        setStepEnabled(3, false);
+        setStepEnabled(4, false);
         $('h-hotelId').value = hotel.id || '';
         $('h-supplierHotelId').value = hotel.supplierHotelId || '';
         boxes.detail.set(buildDetailBody());
@@ -336,6 +349,11 @@
     state.room = room;
     state.product = product;
     if (!product) return;
+    window.BookingPreview.hotel(state.hotel, state.detail?.hotelDetail, room, product);
+    state.quote = null;
+    $('h-quote').innerHTML = '';
+    $('btn-h-create').disabled = true;
+    setStepEnabled(4, false);
     try {
       boxes.price.set(buildQuoteBody());
     } catch {
@@ -344,7 +362,6 @@
     $('btn-h-price').disabled = false;
     setStepEnabled(3, true);
     $('h-price-hint').textContent = `已选 ${product.ratePlanName || ''} · ${product.partnerCode || ''}`;
-    $('h-step-3').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   /* ---------------- 常旅客 ---------------- */
@@ -443,6 +460,7 @@
     $('h-search-hint').textContent = '搜索中…';
     try {
       const json = checkResponse(await api('java', '/hotel/search', { body: boxes.search.get() }));
+      window.BookingPreview.clear('hotel');
       state.hotels = json.hotels || [];
       renderHotels(state.hotels);
       $('h-search-hint').textContent = `共 ${json.total !== undefined ? json.total : state.hotels.length} 家 · searchSessionId ${json.searchSessionId || '-'}`;
@@ -457,20 +475,24 @@
   }
 
   async function doDetail() {
+    const selected = state.hotel;
     const button = $('btn-h-detail');
     button.disabled = true;
     try {
       const json = checkResponse(await api('java', '/hotel/detail', { body: boxes.detail.get() }));
+      if (state.hotel !== selected) return;
       state.detail = json;
+      window.BookingPreview.hotel(state.hotel, json.hotelDetail);
       renderRooms(json.rooms || []);
       setStepEnabled(3, true);
       toast(`加载到 ${(json.rooms || []).length} 个房型`, 'ok');
       if (!state.passengers.length) void doPassengers(true);
     } catch (error) {
+      if (state.hotel !== selected) return;
       showError($('h-rooms'), error);
       toast(error.message, 'error');
     } finally {
-      button.disabled = false;
+      if (state.hotel === selected) button.disabled = false;
     }
   }
 
@@ -530,7 +552,7 @@
   }
 
   function enablePay(enabled) {
-    ['btn-h-pay', 'btn-h-pay-status', 'btn-h-alipay', 'btn-h-order-detail'].forEach((id) => { $(id).disabled = !enabled; });
+    ['btn-h-pay', 'btn-h-pay-status', 'btn-h-alipay', 'btn-h-order-detail', 'btn-h-cancel', 'btn-h-refunds'].forEach((id) => { $(id).disabled = !enabled; });
   }
 
   const orderPath = () => encodeURIComponent($('h-orderNo').value.trim());
@@ -556,8 +578,9 @@
     const result = await api('java', `/hotel/orders/${orderPath()}/pay/alipay`, {
       body: { idempotentKey: uid(), travelPurpose: travelPurpose() },
     });
-    checkResponse(result);
+    const data = checkResponse(result);
     out($('h-pay'), result, '支付宝支付参数');
+    TMC.showPay($('h-pay'), data, '酒店支付宝支付');
   }
 
   async function doOrderDetail() {
@@ -567,7 +590,67 @@
     out($('h-pay'), result, '酒店订单详情');
   }
 
+  /* ---------------- 退订 / 取消 ---------------- */
+
+  const cancelMode = () => $('h-cancel-mode').value;
+
+  function buildCancelBody() {
+    const body = { idempotentKey: uid(), travelPurpose: travelPurpose() };
+    if (cancelMode() === 'refund') {
+      const code = $('h-cancel-reason').value;
+      body.reasonCode = code;
+      const desc = $('h-cancel-desc').value.trim();
+      if (desc) body.reasonDesc = desc;
+      else if (CANCEL_REASON_LABELS[code] && code !== 'OTHER') body.reasonDesc = CANCEL_REASON_LABELS[code];
+    }
+    const applyNo = $('h-cancel-applyNo').value.trim();
+    if (applyNo) body.applyNo = applyNo;
+    return body;
+  }
+
+  function syncCancelMode() {
+    const refund = cancelMode() === 'refund';
+    $('h-cancel-reason').disabled = !refund;
+    $('h-cancel-desc').disabled = !refund;
+  }
+
+  async function doCancel() {
+    if (!$('h-orderNo').value.trim()) return toast('请填写订单号', 'error');
+    const body = boxes.cancel.get();
+    if (cancelMode() === 'refund' && body.reasonCode === 'OTHER' && !String(body.reasonDesc || '').trim()) {
+      return toast('退订原因为「其他」时，请填写原因说明', 'error');
+    }
+    const button = $('btn-h-cancel');
+    button.disabled = true;
+    try {
+      const result = await api('java', `/hotel/orders/${orderPath()}/cancel`, { body });
+      const data = checkResponse(result);
+      out($('h-cancel'), result, cancelMode() === 'refund' ? '退订提交结果' : '取消提交结果');
+      toast(`已提交${cancelMode() === 'refund' ? '退订' : '取消'}：${data.cancelNo || data.orderNo || ''}`, 'ok');
+      // 提交成功后换一个幂等键，方便再次调试；同一订单重复提交相同 key 会被后端去重。
+      boxes.cancel.set(buildCancelBody());
+    } catch (error) {
+      showError($('h-cancel'), error);
+      toast(error.message, 'error');
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function doRefunds() {
+    if (!$('h-orderNo').value.trim()) return toast('请填写订单号', 'error');
+    try {
+      const result = await api('java', `/hotel/orders/${orderPath()}/refunds`, { method: 'GET' });
+      checkResponse(result);
+      out($('h-cancel'), result, '退款单');
+    } catch (error) {
+      showError($('h-cancel'), error);
+      toast(error.message, 'error');
+    }
+  }
+
   function resetFlow() {
+    window.BookingPreview.clear('hotel');
     state.hotels = [];
     state.hotel = null;
     state.detail = null;
@@ -577,7 +660,7 @@
     state.orderNo = '';
     state.passengers = [];
     state.guest = null;
-    ['h-hotels', 'h-rooms', 'h-quote', 'h-order', 'h-pay', 'h-passengers'].forEach((id) => { $(id).innerHTML = ''; });
+    ['h-hotels', 'h-rooms', 'h-quote', 'h-order', 'h-pay', 'h-cancel', 'h-passengers'].forEach((id) => { $(id).innerHTML = ''; });
     ['h-hotelId', 'h-supplierHotelId', 'h-orderNo'].forEach((id) => { $(id).value = ''; });
     ['btn-h-detail', 'btn-h-price', 'btn-h-create'].forEach((id) => { $(id).disabled = true; });
     enablePay(false);
@@ -704,6 +787,7 @@
     boxes.detail = jsonBox($('h-json-detail'), buildDetailBody());
     boxes.price = jsonBox($('h-json-price'), {});
     boxes.create = jsonBox($('h-json-create'), {});
+    boxes.cancel = jsonBox($('h-json-cancel'), buildCancelBody());
 
     const syncSearch = () => {
       boxes.search.set(buildSearchBody());
@@ -738,6 +822,15 @@
       });
     });
 
+    syncCancelMode();
+    ['h-cancel-mode', 'h-cancel-reason', 'h-cancel-desc', 'h-cancel-applyNo'].forEach((id) => {
+      $(id).addEventListener('input', () => boxes.cancel.set(buildCancelBody()));
+      $(id).addEventListener('change', () => {
+        if (id === 'h-cancel-mode') syncCancelMode();
+        boxes.cancel.set(buildCancelBody());
+      });
+    });
+
     $('btn-h-passengers').addEventListener('click', () => doPassengers(false));
     $('btn-h-search').addEventListener('click', doSearch);
     $('btn-h-detail').addEventListener('click', doDetail);
@@ -747,10 +840,13 @@
     $('btn-h-pay-status').addEventListener('click', doPayStatus);
     $('btn-h-alipay').addEventListener('click', doAlipay);
     $('btn-h-order-detail').addEventListener('click', doOrderDetail);
+    $('btn-h-cancel').addEventListener('click', doCancel);
+    $('btn-h-refunds').addEventListener('click', doRefunds);
     $('btn-hotel-reset').addEventListener('click', resetFlow);
 
     $('h-orderNo').addEventListener('input', () => {
       enablePay(Boolean($('h-orderNo').value.trim()));
+      boxes.cancel.set(buildCancelBody());
     });
   }
 

@@ -162,6 +162,11 @@ app.whenReady().then(() => {
     app.dock.setIcon(nativeImage.createFromPath(logoPath));
   }
   ipcMain.handle('tmc:http', (_event, options) => doHttp(options));
+  ipcMain.handle('tmc:open-external', (_event, url) => {
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return { ok: false, error: '不支持的链接' };
+    shell.openExternal(url);
+    return { ok: true };
+  });
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

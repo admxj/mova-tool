@@ -453,6 +453,121 @@
     return hit ? hit.code : (CARD_TYPE_ALIASES[raw.toUpperCase()] || 'NI');
   }
 
+
+  function buildPayUrl(payForm) {
+    if (typeof payForm !== 'string' || !payForm.trim()) return '';
+    try {
+      const doc = new DOMParser().parseFromString(payForm, 'text/html');
+      const form = doc.querySelector('form');
+      if (!form) return '';
+      const action = form.getAttribute('action') || '';
+      if (!/^https?:\/\//i.test(action)) return '';
+      const url = new URL(action);
+      for (const input of Array.from(form.querySelectorAll('input[name]'))) {
+        if (!url.searchParams.has(input.name)) {
+          url.searchParams.set(input.name, input.value || '');
+        }
+      }
+      return url.toString();
+    } catch {
+      return '';
+    }
+  }
+
+  function openExternal(url) {
+    if (window.tmcBridge && window.tmcBridge.openExternal) {
+      window.tmcBridge.openExternal(url);
+      return;
+    }
+    window.open(url, '_blank', 'noopener');
+  }
+
+  let payModalUrl = '';
+  function closePayModal() {
+    const overlay = $('pay-qr-modal');
+    if (overlay) overlay.classList.add('hidden');
+  }
+  function ensurePayModal() {
+    let overlay = $('pay-qr-modal');
+    if (overlay) return overlay;
+    overlay = document.createElement('div');
+    overlay.id = 'pay-qr-modal';
+    overlay.className = 'modal-overlay hidden';
+    overlay.innerHTML = `
+      <div class="modal">
+        <div class="modal-head">
+          <strong>支付宝扫码支付</strong>
+          <button class="icon-btn" id="pay-qr-close" title="关闭">×</button>
+        </div>
+        <div class="qr-body" id="pay-qr-body"></div>
+        <div class="muted-text qr-tip">用手机支付宝扫一扫完成支付。二维码等同于支付凭证，请勿转发给他人。</div>
+        <div class="modal-actions">
+          <button class="ghost small" id="pay-qr-copy">复制链接</button>
+          <button class="ghost small" id="pay-qr-open">浏览器打开</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) closePayModal();
+    });
+    $('pay-qr-close').addEventListener('click', closePayModal);
+    $('pay-qr-copy').addEventListener('click', () => {
+      copyText(payModalUrl).then(() => toast('已复制支付链接', 'ok'));
+    });
+    $('pay-qr-open').addEventListener('click', () => openExternal(payModalUrl));
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !overlay.classList.contains('hidden')) closePayModal();
+    });
+    return overlay;
+  }
+  function showPayModal(url) {
+    const overlay = ensurePayModal();
+    payModalUrl = url;
+    const body = $('pay-qr-body');
+    body.innerHTML = '';
+    try {
+      if (typeof qrcode !== 'function') throw new Error('二维码组件未加载');
+      const qr = qrcode(0, 'M');
+      qr.addData(url);
+      qr.make();
+      body.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2 });
+    } catch (error) {
+      body.innerHTML = `<div class="empty">${esc(error.message || '二维码生成失败')}</div>`;
+    }
+    overlay.classList.remove('hidden');
+  }
+
+  function showPay(container, data, title) {
+    if (!container || !data) return;
+    const url = data.paymentUrl || buildPayUrl(data.payForm || '');
+    if (!url) return;
+    container.querySelectorAll('.pay-card').forEach((node) => node.remove());
+    const card = document.createElement('div');
+    card.className = 'card pay-card';
+    const parts = [];
+    if (data.orderNo) parts.push(`订单 ${esc(data.orderNo)}`);
+    if (data.payOrderId) parts.push(`支付单 ${esc(data.payOrderId)}`);
+    parts.push(`金额 ${money(data.payAmount)}`);
+    card.innerHTML = `
+      <div class="card-head">
+        <strong>${esc(title || '支付宝支付')}</strong>
+        <span class="badge ok">payForm 已生成</span>
+      </div>
+      <div class="muted-text">${parts.join(' · ')}</div>
+      <div class="actions">
+        <button class="primary small" data-pay-act="qr">手机扫码支付</button>
+        <button class="ghost small" data-pay-act="open">浏览器打开</button>
+        <button class="ghost small" data-pay-act="copy">复制支付链接</button>
+      </div>
+      <div class="pay-url" title="${esc(url)}">${esc(url)}</div>`;
+    card.querySelector('[data-pay-act="qr"]').addEventListener('click', () => showPayModal(url));
+    card.querySelector('[data-pay-act="open"]').addEventListener('click', () => openExternal(url));
+    card.querySelector('[data-pay-act="copy"]').addEventListener('click', () => {
+      copyText(url).then(() => toast('已复制支付链接', 'ok'));
+    });
+    container.appendChild(card);
+  }
+
   window.TMC = {
     settings,
     session,
@@ -483,6 +598,8 @@
     buildUrl,
     CARD_TYPES,
     normalizeCardType,
+    buildPayUrl,
+    showPay,
   };
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -546,6 +663,7 @@
       const key = (event.key || '').toLowerCase();
       if (key === 'f' && (event.ctrlKey || event.metaKey) && !event.altKey) {
         event.preventDefault();
+        window.BookingPreview?.showRaw();
         openInspectorFind();
       } else if (key === 'escape' && !$('insp-find').hidden) {
         closeInspectorFind();

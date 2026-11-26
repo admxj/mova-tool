@@ -2,11 +2,13 @@
 (function () {
   'use strict';
 
-  const { $, esc, money, uid, api, toast, jsonBox, showError, okResponse, settings } = window.TMC;
+  const { $, esc, money, uid, api, toast, jsonBox, showError, okResponse, settings, normalizeCardType } = window.TMC;
 
   const state = {
     routes: [],
     guid: '',
+    searchTraceId: '',
+    rules: null,
     detailKey: '',
     selectedRoute: null,
     selectedProduct: null,
@@ -250,7 +252,7 @@
       companyId: tenantValue(),
       partnerCode: tenantValue(),
       employeeName: $('f-employeeName').value.trim() || passenger.name,
-      voyageType: 'ONE_WAY',
+      voyageType: 'OW',
       contactName,
       contactPhone,
     };
@@ -318,14 +320,13 @@
           <span class="muted-text">${products.length} 个报价</span>
         </div>
         <table class="mini-table">
-          <thead><tr><th>舱等</th><th>产品类型</th><th>价格</th><th>detailKey</th><th></th></tr></thead>
+          <thead><tr><th>舱等</th><th>产品类型</th><th>价格</th><th></th></tr></thead>
           <tbody>
             ${products.map((product, index) => `
               <tr>
                 <td>${esc((product.cabinInfo && product.cabinInfo.cabinClassCode) || '-')}</td>
                 <td>${esc(product.productType || '-')}</td>
                 <td class="price">${esc(productPrice(product))}</td>
-                <td><code>${esc(product.detailKey || '-')}</code></td>
                 <td><button class="ghost small" data-quote-pick="${index}">选择此报价</button></td>
               </tr>`).join('')}
           </tbody>
@@ -339,11 +340,13 @@
   }
 
   async function pickRoute(route) {
+    window.BookingPreview.flight(route);
     const guid = (route && route.trip && route.trip.guid) || '';
     if (!guid) {
       toast('该航班没有 guid，无法拉取报价', 'error');
       return;
     }
+    state.rules = null;
     state.selectedRoute = route;
     state.guid = guid;
     state.selectedProduct = null;
@@ -367,6 +370,8 @@
 
   async function selectQuote(product, route) {
     if (!product) return;
+    $('btn-f-price').disabled = true;
+    $('btn-f-create').disabled = true;
     state.selectedProduct = product;
     state.productRoute = route || state.productRoute;
     state.detailKey = product.detailKey || '';
@@ -377,7 +382,35 @@
     $('btn-f-detail').disabled = !(state.detailKey && state.guid);
     $('f-detail-info').innerHTML = '';
     $('f-quote').innerHTML = '';
-    await doDetail();
+    const previewRoute = route || state.selectedRoute;
+    const rules = { loading: Boolean(state.guid && state.detailKey) };
+    state.rules = rules;
+    window.BookingPreview.flight(previewRoute, product, rules);
+    if (rules.loading) {
+      void loadRules(rules, previewRoute, product, {
+        guid: state.guid,
+        detailKey: state.detailKey,
+        traceId: state.searchTraceId || undefined,
+        travelPurpose: travelPurpose(),
+      });
+      await doDetail();
+    }
+  }
+
+  async function loadRules(rules, route, product, body) {
+    try {
+      const result = checkFlightResponse(await api('java', '/flight/refundChangeRule', { body }));
+      rules.data = result.rule;
+    } catch (error) {
+      rules.error = error.message || '规则查询失败';
+    } finally {
+      rules.loading = false;
+      if (state.rules === rules) {
+        const detailRoute = state.detail?.route;
+        const matching = productList(detailRoute).find((item) => item.detailKey === body.detailKey);
+        window.BookingPreview.flight(detailRoute || route, { ...product, ...matching }, rules, true);
+      }
+    }
   }
 
   function renderDetail(route) {
@@ -385,6 +418,7 @@
     const products = productList(route);
     const product = products.find((item) => item.detailKey === state.detailKey) || products[0] || state.selectedProduct;
     const segments = trip.segments || [];
+    window.BookingPreview.flight(route, { ...state.selectedProduct, ...product }, state.rules, true);
     $('f-detail-info').innerHTML = `
       <div class="card">
         <div class="card-head">
@@ -462,6 +496,9 @@
       const result = await api('java', '/flight/search', { body: boxes.search.get() });
       const json = checkFlightResponse(result);
       saveSearchForm();
+      state.rules = null;
+      state.searchTraceId = json.traceId || '';
+      window.BookingPreview.clear('flight');
       state.routes = json.routes || [];
       renderRoutes(state.routes);
       $('f-search-hint').textContent = `共 ${json.totalCountry !== undefined ? json.totalCountry : state.routes.length} 个航班 · ${json.traceId ? 'traceId ' + json.traceId : ''}`;
@@ -478,6 +515,7 @@
 
   async function doProducts() {
     if (!state.guid) return;
+    const selected = state.selectedRoute;
     const body = {
       guid: state.guid,
       travelPurpose: travelPurpose(),
@@ -487,6 +525,7 @@
     };
     try {
       const result = await api('java', '/flight/searchProduct', { body });
+      if (state.selectedRoute !== selected) return;
       const json = checkFlightResponse(result);
       const route = json.route || state.selectedRoute;
       const products = productList(route);
@@ -501,6 +540,7 @@
       toast(`拉到 ${products.length} 个报价`, 'ok');
       setStepEnabled(2, true);
     } catch (error) {
+      if (state.selectedRoute !== selected) return;
       showError($('f-products'), error);
       $('f-selected-hint').textContent = '拉取报价失败';
       toast(error.message, 'error');
@@ -508,11 +548,15 @@
   }
 
   async function doDetail() {
+    const selection = state.selectedProduct;
+    const guid = state.guid;
+    const stillSelected = () => state.selectedProduct === selection && state.guid === guid;
     const button = $('btn-f-detail');
     button.disabled = true;
     $('f-selected-hint').textContent = '正在查询详情…';
     try {
       const result = await api('java', '/flight/searchDetail', { body: boxes.detail.get() });
+      if (!stillSelected()) return;
       const json = checkFlightResponse(result);
       if (!json.route) throw new Error('详情里没有 route');
       state.detail = json;
@@ -525,14 +569,14 @@
       }
       $('btn-f-price').disabled = false;
       setStepEnabled(3, true);
-      $('f-step-3').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       if (!state.passengers.length) void doPassengers();
       $('f-selected-hint').textContent = `已获取报价详情 ${state.detailKey}`;
     } catch (error) {
+      if (!stillSelected()) return;
       showError($('f-detail-info'), error);
       toast(error.message, 'error');
     } finally {
-      button.disabled = false;
+      if (stillSelected()) button.disabled = !(state.guid && state.detailKey);
     }
   }
 
@@ -630,8 +674,9 @@
     const result = await api('java', `/air/order/${encodeURIComponent(orderNo)}/pay/alipay`, {
       body: { idempotentKey: uid(), travelPurpose: travelPurpose() },
     });
-    checkFlightResponse(result);
+    const data = checkFlightResponse(result);
     out($('f-pay'), result, '支付宝支付参数');
+    TMC.showPay($('f-pay'), data, '机票支付宝支付');
   }
 
   async function doOrderDetail() {
@@ -654,6 +699,9 @@
   }
 
   function resetFlow() {
+    state.rules = null;
+    state.searchTraceId = '';
+    window.BookingPreview.clear('flight');
     state.routes = [];
     state.guid = '';
     state.detailKey = '';

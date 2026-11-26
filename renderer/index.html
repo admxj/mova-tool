@@ -17,7 +17,8 @@
       </div>
     </div>
     <nav class="tabs">
-      <button class="tab active" data-view="flight">机票</button>
+      <button class="tab active" data-view="flight">机票预订</button>
+      <button class="tab" data-view="flight-after-sales">机票售后</button>
       <button class="tab" data-view="hotel">酒店</button>
       <button class="tab" data-view="login">登录</button>
       <button class="tab" data-view="settings">接口配置</button>
@@ -174,6 +175,19 @@
         </section>
       </div>
 
+      <div class="view" id="view-flight-after-sales">
+        <div class="view-head">
+          <div>
+            <h2 id="f-after-sales-title">机票售后</h2>
+            <p>可直接使用已有订单。预估费用不等于提交，提交及支付前请核对环境、订单和票号。</p>
+          </div>
+        </div>
+        <section class="step" id="f-after-sales" aria-labelledby="f-after-sales-title">
+          <details class="sub-block"><summary>机票退票</summary><div id="air-refund-panel"></div></details>
+          <details class="sub-block"><summary>机票改签</summary><div id="air-change-panel"></div></details>
+        </section>
+      </div>
+
       <!-- ==================== 酒店 ==================== -->
       <div class="view" id="view-hotel">
         <div class="view-head">
@@ -305,6 +319,35 @@
             <button class="ghost" id="btn-h-order-detail" disabled>订单详情</button>
           </div>
           <div id="h-pay" class="results"></div>
+
+          <div class="sub-block">
+            <h4>退订 / 取消</h4>
+            <div class="grid">
+              <label>操作类型
+                <select id="h-cancel-mode">
+                  <option value="refund">退订（已支付，需填原因）</option>
+                  <option value="cancel">取消（待支付，无需原因）</option>
+                </select>
+              </label>
+              <label>退订原因
+                <select id="h-cancel-reason">
+                  <option value="TRIP_CANCELLED">行程取消</option>
+                  <option value="TIME_CHANGED">时间变更</option>
+                  <option value="LOCATION_UNSUITABLE">酒店位置不合适</option>
+                  <option value="OTHER">其他</option>
+                </select>
+              </label>
+              <label>原因说明 <input id="h-cancel-desc" placeholder="选择「其他」时必填" /></label>
+              <label>申请单号 applyNo（可选） <input id="h-cancel-applyNo" placeholder="可选" /></label>
+            </div>
+            <div id="h-json-cancel"></div>
+            <div class="actions">
+              <button class="ghost" id="btn-h-cancel" disabled>提交退订 / 取消</button>
+              <button class="ghost" id="btn-h-refunds" disabled>查询退款单</button>
+              <span class="hint">取消结果可能异步，提交后可查退款单或订单详情</span>
+            </div>
+            <div id="h-cancel" class="results"></div>
+          </div>
         </section>
       </div>
 
@@ -407,7 +450,13 @@
       </div>
     </section>
 
-    <aside class="inspector" id="inspector">
+    <aside class="inspector" id="inspector" aria-label="详情与接口调试">
+      <div class="side-switch" id="side-switch">
+        <button type="button" class="seg active" id="side-detail" aria-pressed="true">业务详情</button>
+        <button type="button" class="seg" id="side-raw" aria-pressed="false">接口调试</button>
+      </div>
+      <section class="booking-preview" id="booking-preview" aria-label="所选项目详情" aria-live="polite"></section>
+      <div class="raw-inspector" id="raw-inspector" hidden>
       <div class="inspector-head">
         <div class="segmented">
           <button class="seg active" data-insp="response">响应</button>
@@ -433,13 +482,18 @@
         <button class="ghost small" id="btn-find-close" title="关闭（Esc）">关闭</button>
       </div>
       <pre class="inspector-body" id="insp-body">执行任一步骤后，这里显示最近一次请求或响应。</pre>
+      </div>
     </aside>
   </main>
 
   <div id="toast" class="toast hidden"></div>
+  <script src="./vendor/qrcode.js"></script>
   <script src="./lib.js"></script>
+  <script src="./booking-preview.js"></script>
   <script src="./flight.js"></script>
   <script src="./hotel.js"></script>
+  <script src="./air-refund.js"></script>
+  <script src="./air-change.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
