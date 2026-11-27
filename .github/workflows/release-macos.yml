@@ -1,0 +1,70 @@
+name: Release macOS arm64
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Verify tag and runner
+        shell: bash
+        run: |
+          test "$(uname -m)" = arm64
+          version="$(node -p 'require("./package.json").version')"
+          [[ "$GITHUB_REF_NAME" == "v$version" ]] || {
+            echo "::error::Tag must match package version v$version"
+            exit 1
+          }
+      - run: npm ci
+      - run: node --test test/train-booking.test.js
+      - name: Build without Developer ID signing
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run dist
+      - name: Verify release files
+        shell: bash
+        run: |
+          compgen -G 'dist/*-arm64.dmg' >/dev/null
+          compgen -G 'dist/*-arm64-mac.zip' >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            dist/*-arm64.dmg
+            dist/*-arm64-mac.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-arm64
+          path: release-assets
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --generate-notes \
+            --notes 'macOS arm64 手动安装。未使用 Developer ID 签名或 Apple 公证；不支持应用内自动更新。' \
+            release-assets/*.dmg release-assets/*.zip
