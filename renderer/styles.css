@@ -149,6 +149,24 @@ code { font-family: var(--mono); font-size: 12px; color: #3b5b8c; background: #f
   margin-bottom: 12px;
 }
 .grid.wide { grid-template-columns: 1fr; }
+.station-picker { position: relative; min-width: 0; }
+.station-picker small { display: block; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.station-options:not([hidden]):not(:empty) {
+  position: absolute;
+  z-index: 3;
+  inset-inline: 0;
+  margin-top: 4px;
+  max-height: min(224px, 40vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  box-shadow: 0 5px 16px #17255426;
+}
+.station-group-title { padding: 4px 9px; background: var(--panel-2); color: var(--muted); font-size: 11px; }
+.station-options [role="option"] { padding: 7px 9px; cursor: pointer; overflow-wrap: anywhere; }
+.station-options [role="option"]:hover, .station-options [aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
 label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 11px; }
 
 input, select, textarea {

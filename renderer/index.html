@@ -195,15 +195,13 @@
         <section class="step">
           <div class="step-head"><span class="num">1</span><h3>查票和选席</h3></div>
           <div class="grid">
-            <label>出发站关键词 <input id="tr-from-key" /></label>
-            <label>到达站关键词 <input id="tr-to-key" /></label>
-            <label>出发站 <select id="tr-from"></select></label>
-            <label>到达站 <select id="tr-to"></select></label>
+            <div class="station-picker"><label>出发站 <input id="tr-from" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="tr-from-options" aria-describedby="tr-from-status" autocomplete="off" placeholder="输入站名或拼音" /></label><div id="tr-from-options" class="station-options" role="listbox" aria-label="出发站候选" hidden></div><small id="tr-from-status" role="status"></small></div>
+            <div class="station-picker"><label>到达站 <input id="tr-to" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="tr-to-options" aria-describedby="tr-to-status" autocomplete="off" placeholder="输入站名或拼音" /></label><div id="tr-to-options" class="station-options" role="listbox" aria-label="到达站候选" hidden></div><small id="tr-to-status" role="status"></small></div>
             <label>乘车日期 <input id="tr-date" type="date" /></label>
             <label>车次 <select id="tr-trip"></select></label>
             <label>席别 <select id="tr-seat"></select></label>
           </div>
-          <div class="actions"><button id="tr-find-from">搜索出发站</button> <button id="tr-find-to">搜索到达站</button> <button id="tr-search">查余票</button> <button id="tr-info">查经停</button></div>
+          <div class="actions"><button class="primary" id="tr-search">查余票</button> <button class="ghost" id="tr-info">查经停</button></div>
         </section>
         <section class="step">
           <div class="step-head"><span class="num">2</span><h3>乘车人、验价与校验</h3></div>
@@ -214,12 +212,12 @@
             <label>申请单号（按需填写） <input id="tr-apply" /></label>
             <label>超标原因（按需填写） <input id="tr-reason" maxlength="500" /></label>
           </div>
-          <div class="actions"><button id="tr-load">加载乘车人及绑定账号</button> <button id="tr-prepare">验价并校验</button> <button id="tr-confirm" disabled>确认差标结果</button></div>
+          <div class="actions"><button class="ghost" id="tr-load">加载乘车人及绑定账号</button> <button class="primary" id="tr-prepare">验价并校验</button> <button class="ghost" id="tr-confirm" disabled>确认差标结果</button></div>
         </section>
         <section class="step">
           <div class="step-head"><span class="num">3</span><h3>占座和订单查询</h3></div>
           <div class="grid"><label>订单号 <input id="tr-order-no" /></label></div>
-          <div class="actions"><button id="tr-submit" disabled>提交占座</button> <button id="tr-status">查询订单状态</button></div>
+          <div class="actions"><button class="primary" id="tr-submit" disabled>提交占座</button> <button class="ghost" id="tr-status">查询订单状态</button></div>
         </section>
         <div id="tr-output" aria-live="polite"></div>
       </div>
@@ -528,6 +526,7 @@
   <script src="./booking-preview.js"></script>
   <script src="./flight.js"></script>
   <script src="./train-booking.js"></script>
+  <script src="./train-station-picker.js"></script>
   <script src="./train.js"></script>
   <script src="./hotel.js"></script>
   <script src="./air-refund.js"></script>

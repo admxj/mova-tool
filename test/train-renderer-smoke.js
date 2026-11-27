@@ -31,8 +31,20 @@
       return { status: 200, json: { success: true, code: 0, data: routes[path](options.body) } };
     };
     document.querySelector('[data-view="train"]').click();
-    set('from-key', '北京南'); set('to-key', '上海虹桥');
-    await click('find-from'); await click('find-to'); await click('search');
+    for (const [id, name] of [['from', '北京南'], ['to', '上海虹桥']]) {
+      el(id).focus();
+      set(id, name);
+      const deadline = Date.now() + 2000;
+      while (!el(`${id}-options`).querySelector('[role=option]') && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      assert(el(`${id}-options`).textContent.includes(name), `Missing ${name} station option`);
+      for (const key of ['ArrowDown', 'Enter']) el(id).dispatchEvent(new KeyboardEvent('keydown', { key }));
+      assert(el(id).getAttribute('aria-expanded') === 'false', 'Selection should close the list');
+    }
+    await click('search');
+    const query = calls.find(call => call.path === '/train/search').options.body;
+    assert(query.fromStation === 'VNP' && query.toStation === 'AOH', 'Search must send selected station codes');
     set('trip', '0', 'change'); set('seat', '0'); await click('info');
     await click('load'); set('contact', '测试'); await click('prepare');
     assert(!el('submit').disabled, 'Expected reservation enabled after precheck');
@@ -42,6 +54,8 @@
     assert(el('order-no').value === 'MOCK-TRAIN-1', 'Reservation should populate order number');
     await click('status');
     assert(el('output').textContent.includes('OCCUPY_SUCCESS'), 'Missing order status');
+    set('from', '北京');
+    assert(!el('trip').value && !el('seat').value && el('submit').disabled && el('to').value === '上海虹桥', 'Editing one station must invalidate the trip without clearing the other station');
     assert(calls.every(call => call.service === (call.path.startsWith('/v1/') ? 'go' : 'java')), 'Incorrect API service');
     const price = calls.find(call => call.path === '/train/orders/price').options.body;
     const order = calls.find(call => call.path === '/train/orders').options.body;

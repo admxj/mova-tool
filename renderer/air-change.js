@@ -82,11 +82,11 @@
         <label>改签子订单号 <input data-field="endorse" placeholder="提交后自动填入，也可填入查询详情"></label>
       </div>
       <div class="actions">
-        <button type="button" data-action="search">查询可改签航班及舱位</button>
-        <button type="button" data-action="estimate">预估改签费用</button>
-        <button type="button" data-action="submit">提交改签</button>
-        <button type="button" data-action="pay">确认企业支付</button>
-        <button type="button" data-action="detail">查询改签详情</button>
+        <button type="button" class="ghost" data-action="search">查询可改签航班及舱位</button>
+        <button type="button" class="ghost" data-action="estimate">预估改签费用</button>
+        <button type="button" class="primary" data-action="submit">提交改签</button>
+        <button type="button" class="primary" data-action="pay">确认企业支付</button>
+        <button type="button" class="ghost" data-action="detail">查询改签详情</button>
       </div>
       <p data-status role="status" aria-live="polite"></p>`;
     const field = (name) => root.querySelector(`[data-field="${name}"]`);

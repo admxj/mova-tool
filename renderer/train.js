@@ -10,7 +10,8 @@
   let ready = false;
   let pending = false;
   const lists = {};
-  const pick = id => lists[id]?.[value(id) === '' ? -1 : Number(value(id))];
+  const pickers = {};
+  const pick = id => pickers[id] ? pickers[id].selected : lists[id]?.[value(id) === '' ? -1 : Number(value(id))];
   const seats = { swz: '商务座', tdz: '特等座', ydz: '一等座', edz: '二等座', rw: '软卧', yw: '硬卧', rz: '软座', yz: '硬座', wz: '无座' };
   const request = async (service, path, options) => {
     if (!session.token) throw Error('请先登录');
@@ -40,7 +41,8 @@
     previous = current;
     invalidate();
     accountId = undefined;
-    for (const id of ['from', 'to', 'trip', 'seat', 'passengers']) fill(id, [], () => '');
+    for (const picker of Object.values(pickers)) picker.reset();
+    for (const id of ['trip', 'seat', 'passengers']) fill(id, [], () => '');
     for (const id of ['contact', 'phone', 'apply', 'reason', 'order-no']) el(id).value = '';
     el('output').replaceChildren();
   }
@@ -64,18 +66,19 @@
     if (!from || !to || from.stationCode === to.stationCode || !value('date')) throw Error('请选择不同的出发站、到达站和出行日期');
     return { trainDate: value('date'), fromStation: from.stationCode, toStation: to.stationCode };
   }
-  for (const side of ['from', 'to']) action(`find-${side}`, async guard => {
+  function clearTrip() {
     invalidate();
-    fill(side, [], () => '');
     fill('trip', [], () => '');
     fill('seat', [], () => '');
-    const data = await java('/train/station/search', { stationName: value(`${side}-key`) });
-    guard();
-    const items = (data?.groups || []).flatMap(group => group.stations || []).filter(item => item.stationCode);
-    fill(side, items, item => `${item.stationName}（${item.stationCode}）`);
-    if (items.length === 1) el(side).selectedIndex = 1;
-    output({ 车站数量: items.length });
-  });
+    el('output').replaceChildren();
+  }
+  for (const side of ['from', 'to']) {
+    el(side).addEventListener('focus', syncContext);
+    pickers[side] = window.TrainStationPicker.mount({
+      input: el(side), list: el(`${side}-options`), status: el(`${side}-status`), context,
+      request: stationName => java('/train/station/search', { stationName }), onChange: clearTrip,
+    });
+  }
   action('search', async guard => {
     invalidate();
     fill('trip', [], () => '');

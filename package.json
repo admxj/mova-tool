@@ -1,6 +1,6 @@
 {
   "name": "tmc-tool",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "TMC 机票 / 酒店 查询、下单、支付桌面调试工具",
   "productName": "TMC调试工具",
   "main": "main.js",
