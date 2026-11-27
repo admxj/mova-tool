@@ -221,7 +221,7 @@
           <div class="grid">
             <label>联系人 <input id="tr-contact" /></label>
             <label>联系电话 <input id="tr-phone" type="tel" /></label>
-            <label>申请单号（按需填写） <input id="tr-apply" /></label>
+            <label>出差申请单 <select id="tr-apply" aria-describedby="tr-apply-hint"><option value="">验价并校验后显示可选申请单</option></select><span class="hint" id="tr-apply-hint" role="status"></span></label>
             <label>超标原因（按需填写） <input id="tr-reason" maxlength="500" /></label>
           </div>
           <div class="actions"><button class="primary" id="tr-prepare">验价并校验</button> <button class="ghost" id="tr-confirm" disabled>确认差标结果</button></div>

@@ -48,6 +48,7 @@
             departureTime: `${quote.trainDate} ${departTime.length === 5 ? `${departTime}:00` : departTime}`,
             arrivalCityCode: quote.toCityCode, arrivalCityName: quote.toCityName }] },
         });
+        if (application?.result === 'SELECT_REQUIRED') return { kind: 'select-application', application };
         if (application?.passed !== true || (application.required !== false && !applyNo)) throw Error(application?.message || '申请单校验未通过或未选择申请单');
       }
       const code = quote.trainCode.trim().toUpperCase();

@@ -49,6 +49,26 @@ test('required application prevents reservation without applyNo', async () => {
   await assert.rejects(flow.submit(), /校验/);
 });
 
+test('offers server applications and validates the selected applyNo before booking', async () => {
+  const path = '/v1/co/check/travel/apply/check';
+  const availableApplications = [{ applyNo: 'TA-1', startDate: '2027-01-01' }];
+  let selected = false;
+  const { flow, calls } = setup({
+    '/v1/co/check/travel/apply/exemption/check': { passed: false },
+    [path]: () => selected ? { passed: true, required: true } : { passed: false, result: 'SELECT_REQUIRED', availableApplications },
+  });
+  const result = await flow.prepare(draft);
+  assert.equal(result.kind, 'select-application');
+  assert.deepEqual(result.application.availableApplications, availableApplications);
+  assert.equal(calls.some(call => call.path === policyPath), false);
+  await assert.rejects(flow.submit(), /校验/);
+  selected = true;
+  assert.equal((await flow.prepare({ ...draft, applyNo: 'TA-1' })).kind, 'ready');
+  await flow.submit();
+  assert.equal(calls.filter(call => call.path === path).at(-1).body.applyNo, 'TA-1');
+  assert.equal(calls.at(-1).body.applyNo, 'TA-1');
+});
+
 test('retries preserve the reservation idempotency key', async () => {
   let retries = 0;
   const { flow, calls } = setup({ '/train/orders': () => { if (!retries++) throw Error('timeout'); return { orderNo: 'T1' }; } });

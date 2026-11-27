@@ -88,7 +88,12 @@
       card.querySelector('.train-pick')?.setAttribute('aria-pressed', String(active));
     }
   }
+  function resetApplications() {
+    el('apply').replaceChildren(new Option('验价并校验后显示可选申请单', ''));
+    el('apply-hint').textContent = '';
+  }
   function resetTrains() {
+    resetApplications();
     trains = [];
     hiddenCount = 0;
     el('trains').replaceChildren();
@@ -135,6 +140,7 @@
   function selectTrain(index, seatCode) {
     if (busy || !Number.isInteger(index) || !trains[index]) return;
     invalidate();
+    if (selectedIndex() !== index) resetApplications();
     el('trip').value = String(index);
     const available = showSeats(trains[index]);
     if (seatCode) {
@@ -288,6 +294,21 @@
     output({ 账号状态: '可预订', 企业乘车人数量: items.length });
   });
   function showPrepared(result) {
+    if (result.kind === 'select-application') {
+      const { availableApplications, message } = result.application;
+      const options = new Map();
+      for (const item of Array.isArray(availableApplications) ? availableApplications : []) {
+        const no = typeof item?.applyNo === 'string' ? item.applyNo.trim() : '';
+        if (!no || options.has(no)) continue;
+        const dates = [item.startDate, item.endDate].filter(Boolean).join(' 至 ');
+        options.set(no, new Option([no, item.reason, dates].filter(Boolean).join(' · '), no));
+      }
+      el('apply').replaceChildren(new Option(options.size ? '请选择出差申请单' : '暂无可用申请单', ''), ...options.values());
+      el('apply-hint').textContent = options.size ? '选择申请单后，再点击「验价并校验」。' : (message || '暂无可用申请单');
+      output({ 下一步: options.size ? '选择出差申请单' : '暂无可用申请单', 提示: message });
+      return;
+    }
+    el('apply-hint').textContent = '';
     pending = result.kind === 'confirm';
     ready = result.kind === 'ready';
     const { quoteToken, ...quote } = result.quote;
@@ -329,6 +350,7 @@
     selectTrain(Number(target.dataset.trainPick), target.dataset.seatCode);
   });
   el('trip').addEventListener('change', () => {
+    resetApplications();
     invalidate();
     showSeats(pick('trip'));
     highlightTrain();
