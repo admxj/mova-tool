@@ -358,5 +358,6 @@
       loadUserInfo();
     }
     renderLogs();
+    document.documentElement.dataset.tmcReady = '1';
   });
 })();

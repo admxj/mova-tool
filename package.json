@@ -1,6 +1,6 @@
 {
   "name": "tmc-tool",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "TMC 机票 / 酒店 查询、下单、支付桌面调试工具",
   "productName": "TMC调试工具",
   "main": "main.js",
@@ -34,6 +34,10 @@
     },
     "files": [
       "main.js",
+      "updater.js",
+      "renderer-origin.js",
+      "renderer-update.js",
+      "renderer-update-public.pem",
       "preload.js",
       "renderer/**/*",
       "package.json"

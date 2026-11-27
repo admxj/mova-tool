@@ -1,8 +1,18 @@
-const { app, BrowserWindow, ipcMain, nativeImage, shell } = require('electron');
+const electron = require('electron');
+const { app, BrowserWindow, ipcMain, nativeImage, protocol, shell } = electron;
+const { enableUpdates } = require('./updater');
+const { scheme, rendererUrl, createRendererOrigin, loadRenderer, migrateRendererStorage } = require('./renderer-origin');
+const { createRendererStore } = require('./renderer-update');
 const path = require('node:path');
 const os = require('node:os');
 const fs = require('node:fs');
-const logoPath = path.join(__dirname, 'renderer', 'assets', 'tmc-logo.png');
+const bundledRenderer = path.join(__dirname, 'renderer');
+const logoPath = path.join(bundledRenderer, 'assets', 'tmc-logo.png');
+const rendererOrigin = createRendererOrigin(async (name) => {
+  try { return await fs.promises.readFile(path.join(bundledRenderer, name)); }
+  catch (error) { if (error.code === 'ENOENT' || error.code === 'EISDIR') return null; throw error; }
+});
+protocol.registerSchemesAsPrivileged([{ scheme, privileges: { standard: true, secure: true } }]);
 
 // 显示名称变更后继续使用原来的本地配置目录。
 app.setPath('userData', path.join(app.getPath('appData'), require('./package.json').name));
@@ -68,6 +78,37 @@ async function doHttp(options = {}) {
   }
 }
 
+let rendererStore;
+
+async function showRenderer(win, patch) {
+  rendererOrigin.use(patch);
+  await loadRenderer(win);
+}
+
+async function openInitialRenderer(win) {
+  if (app.isPackaged) {
+    const marker = path.join(app.getPath('userData'), 'renderer-storage-migrated-v1');
+    if (!fs.existsSync(marker)) {
+      try {
+        await migrateRendererStorage(BrowserWindow, path.join(bundledRenderer, 'index.html'));
+        await fs.promises.writeFile(marker, '', { mode: 0o600 });
+      } catch {
+        console.warn('[renderer] legacy storage migration failed; will retry on next launch');
+      }
+    }
+  }
+  if (win.isDestroyed()) return;
+  let patch = await rendererStore?.restore();
+  while (true) {
+    try { await showRenderer(win, patch); return; }
+    catch (error) {
+      if (!patch || win.isDestroyed()) throw error;
+      console.warn('[renderer] reverting failed patch', patch.version);
+      patch = await rendererStore.rejectActive();
+    }
+  }
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1320,
@@ -98,7 +139,10 @@ function createWindow() {
     console.error(`[renderer] process gone: ${details && details.reason}`);
   });
 
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  const initialLoad = openInitialRenderer(win).catch((error) => {
+    console.error('[renderer] load failed:', error.message);
+    if (process.env.TMC_SMOKE) app.exit(1);
+  });
 
   if (process.env.TMC_SMOKE) {
     win.webContents.once('did-finish-load', () => {
@@ -164,13 +208,30 @@ function createWindow() {
       }, 900);
     });
   }
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url !== rendererUrl) event.preventDefault();
+  });
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
+  return initialLoad;
 }
 
 app.whenReady().then(() => {
+  if (app.isPackaged && process.platform === 'darwin' && process.arch === 'arm64') {
+    const keyPath = path.join(__dirname, 'renderer-update-public.pem');
+    if (fs.existsSync(keyPath)) {
+      rendererStore = createRendererStore(path.join(app.getPath('userData'), 'renderer-updates'), app.getVersion(), fs.readFileSync(keyPath));
+    }
+  }
+  protocol.handle(scheme, async (request) => {
+    try { return await rendererOrigin.handle(request); }
+    catch (error) {
+      console.error('[renderer] protocol failed:', error.message);
+      return new Response(null, { status: 500 });
+    }
+  });
   if (app.dock) {
     app.dock.setIcon(nativeImage.createFromPath(logoPath));
   }
@@ -180,7 +241,10 @@ app.whenReady().then(() => {
     shell.openExternal(url);
     return { ok: true };
   });
-  createWindow();
+  void createWindow().then(() => enableUpdates(electron, rendererStore && {
+    version: () => rendererStore.version,
+    activate: (win, version, bytes) => rendererStore.activate(version, bytes, (patch) => showRenderer(win, patch)),
+  }));
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
