@@ -30,7 +30,6 @@ jobs:
 
   desktop:
     needs: classify
-    if: needs.classify.outputs.kind == 'desktop'
     runs-on: macos-15
     environment: release
     steps:
@@ -56,7 +55,7 @@ jobs:
           bash scripts/verify-mac-dist.sh dist
       - uses: actions/upload-artifact@v4
         with:
-          name: release-assets
+          name: desktop-assets
           if-no-files-found: error
           compression-level: 0
           path: |
@@ -82,29 +81,40 @@ jobs:
         run: node scripts/sign-renderer.js "${GITHUB_REF_NAME#v}" release-assets/tmc-renderer.json
       - uses: actions/upload-artifact@v4
         with:
-          name: release-assets
+          name: renderer-assets
           if-no-files-found: error
           path: release-assets/tmc-renderer.json
 
   release:
-    needs: [desktop, renderer]
-    if: ${{ always() && !cancelled() && (needs.desktop.result == 'success' || needs.renderer.result == 'success') }}
+    needs: [classify, desktop, renderer]
+    if: ${{ !cancelled() && needs.classify.result == 'success' && needs.desktop.result == 'success' && ((needs.classify.outputs.kind == 'desktop' && needs.renderer.result == 'skipped') || (needs.classify.outputs.kind == 'renderer' && needs.renderer.result == 'success')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: release-assets
+          name: desktop-assets
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        if: needs.classify.outputs.kind == 'renderer'
+        with:
+          name: renderer-assets
           path: release-assets
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_KIND: ${{ needs.classify.outputs.kind }}
+        shell: bash
         run: |
-          if [[ -f release-assets/tmc-renderer.json ]]; then
-            notes='同底座客户端可安装已签名的界面热更新。'
-          else
-            notes='macOS arm64 DMG 手动安装。未使用 Developer ID 签名或 Apple 公证。'
+          shopt -s nullglob
+          dmgs=(release-assets/*-arm64.dmg)
+          zips=(release-assets/*-arm64-mac.zip)
+          [[ ${#dmgs[@]} -eq 1 && ${#zips[@]} -eq 1 ]]
+          notes='macOS arm64 DMG 手动安装。未使用 Developer ID 签名或 Apple 公证。'
+          if [[ "$RELEASE_KIND" == renderer ]]; then
+            test -s release-assets/tmc-renderer.json
+            notes+=' 同底座客户端也可安装已签名的界面热更新。'
           fi
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
