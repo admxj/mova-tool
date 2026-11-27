@@ -43,8 +43,7 @@ npm run dist
 也可以分开打：
 
 ```bash
-npm run dist:mac   # macOS x64 + arm64
-npm run dist:win   # Windows x64
+npm run dist:mac   # 与 npm run dist 相同，只打 macOS arm64
 npm run pack       # 只生成未压缩目录，快速验证
 ```
 
@@ -52,18 +51,14 @@ npm run pack       # 只生成未压缩目录，快速验证
 
 | 文件 | 平台 |
 | --- | --- |
-| `TMC调试工具-1.0.0.dmg` | macOS Intel |
-| `TMC调试工具-1.0.0-mac.zip` | macOS Intel |
-| `TMC调试工具-1.0.0-arm64.dmg` | macOS Apple Silicon |
-| `TMC调试工具-1.0.0-arm64-mac.zip` | macOS Apple Silicon |
-| `TMC调试工具-1.0.0-x64-setup.exe` | Windows x64 安装包 |
-| `dist/mac/`、`dist/mac-arm64/`、`dist/win-unpacked/` | 未压缩应用目录 |
+| `TMC调试工具-1.0.0-arm64.dmg` | Apple Silicon 手动安装 |
+| `TMC调试工具-1.0.0-arm64-mac.zip` | Apple Silicon 更新包（预留） |
+| `dist/mac-arm64/` | 未压缩应用目录 |
 
 说明：
 
 - macOS 未做代码签名（`mac.identity = null`），本机运行不受影响；复制到其他 Mac 后若提示「已损坏」或「无法验证开发者」，右键「打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/TMC调试工具.app"`。
-- Windows 安装包未签名，首次运行可能出现 SmartScreen 提示，点「更多信息 → 仍要运行」。
-- 在 macOS 上打 Windows 包时关闭了 `win.signAndEditExecutable`，所以 exe 使用 Electron 默认图标和版本信息；需要自定义 Windows 图标/版本信息时，在 Windows 机器上执行 `npm run dist:win`，或给 macOS 安装 wine 后把该选项改为 `true`。
+- 打包只生成本地产物，不上传。保留 ZIP 不代表已开启自动更新；还需接入更新源和客户端更新逻辑，并配置 macOS 发布签名。旧版本的其他平台产物不会被此命令清理。
 - macOS 打包时使用 `renderer/assets/tmc-logo.png` 生成 Finder 和 DMG 安装窗口内的应用图标。
 - arm64 包只能在 Apple Silicon 上运行，无法在 Intel Mac 上启动。
 

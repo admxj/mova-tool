@@ -10,9 +10,8 @@
     "presmoke": "node scripts/set-macos-app-name.js",
     "smoke": "TMC_SMOKE=1 electron .",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder --mac --x64 --arm64 && electron-builder --win --x64",
-    "dist:mac": "electron-builder --mac --x64 --arm64",
-    "dist:win": "electron-builder --win --x64"
+    "dist": "npm run dist:mac",
+    "dist:mac": "electron-builder --mac --arm64 --publish never"
   },
   "keywords": [
     "tmc",
@@ -47,14 +46,12 @@
         {
           "target": "dmg",
           "arch": [
-            "x64",
             "arm64"
           ]
         },
         {
           "target": "zip",
           "arch": [
-            "x64",
             "arm64"
           ]
         }
@@ -64,24 +61,6 @@
     "dmg": {
       "sign": false,
       "title": "${productName} ${version}"
-    },
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "signAndEditExecutable": false
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "shortcutName": "TMC调试工具",
-      "artifactName": "${productName}-${version}-${arch}-setup.${ext}"
     }
   }
 }
