@@ -358,6 +358,13 @@
       loadUserInfo();
     }
     renderLogs();
+    const updateStatus = $('update-status');
+    window.tmcBridge?.onUpdateStatus?.((phase, percent) => {
+      const message = phase === 'checking' ? '正在检查更新…' :
+        phase === 'downloading' ? `正在下载更新… ${percent}%` : '';
+      updateStatus.textContent = message;
+      updateStatus.hidden = !message;
+    });
     document.documentElement.dataset.tmcReady = '1';
   });
 })();

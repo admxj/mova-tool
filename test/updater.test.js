@@ -4,7 +4,7 @@ const { createHash } = require('node:crypto');
 const fs = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const path = require('node:path');
-const { selectUpdate, downloadUpdate, createUpdateCheck, selectUpdateTracks, listReleases } = require('../updater');
+const { selectUpdate, downloadUpdate, createUpdateCheck, selectUpdateTracks, listReleases, enableUpdates } = require('../updater');
 
 const data = 'sample disk image';
 const asset = { name: 'TMC.-1.10.0-arm64.dmg', size: Buffer.byteLength(data),
@@ -43,6 +43,46 @@ test('selects only newer stable arm64 DMGs from the pinned repository', () => {
   assert.equal(selectUpdate({ ...release, prerelease: true }, '1.0.0'), null);
   assert.throws(() => selectUpdate({ ...release, assets: [{ ...asset, browser_download_url: 'https://example.com/a.dmg' }] }, '1.0.0'));
   assert.throws(() => selectUpdate({ ...release, assets: [{ ...asset, digest: null }] }, '1.0.0'));
+});
+
+test('enables the update menu and background check in dev mode', { skip: process.platform !== 'darwin' || process.arch !== 'arm64' }, async () => {
+  const prompts = [];
+  const timers = [];
+  const realSetTimeout = global.setTimeout;
+  const realFetch = global.fetch;
+  let inserted;
+  global.setTimeout = (fn) => { timers.push(fn); return { unref() {} }; };
+  global.fetch = async () => Response.json([release]);
+  try {
+    enableUpdates({
+      app: { isPackaged: false },
+      Menu: { getApplicationMenu: () => ({ items: [{ submenu: { insert: (_index, item) => { inserted = item; } } }] }), setApplicationMenu() {} },
+      MenuItem: function MenuItem(options) { Object.assign(this, options); },
+      BrowserWindow: { getAllWindows: () => [{ isDestroyed: () => false, setProgressBar() {}, webContents: { send() {} } }] },
+      dialog: { showMessageBox: async (_win, options) => { prompts.push(options); return { response: 1 }; } },
+      shell: {},
+    }, null, { dev: true, version: '1.9.0' });
+    assert.equal(inserted?.label, '检查更新…');
+    assert.equal(timers.length, 1);
+    timers[0]();
+    for (let i = 0; i < 50 && prompts.length === 0; i += 1) await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    global.setTimeout = realSetTimeout;
+    global.fetch = realFetch;
+  }
+  assert.equal(prompts[0].message, '发现新版本 1.10.0');
+});
+
+test('honors an explicit current version for local update debugging', async () => {
+  const prompts = [];
+  const check = createUpdateCheck({
+    app: { getVersion: () => '1.10.0' },
+    BrowserWindow: { getAllWindows: () => [{ isDestroyed: () => false, setProgressBar() {} }] },
+    dialog: { showMessageBox: async (_win, options) => { prompts.push(options); return { response: 1 }; } },
+    shell: {},
+  }, async () => Response.json([release]), null, '1.9.0');
+  await check(true);
+  assert.equal(prompts[0].message, '发现新版本 1.10.0');
 });
 
 test('offers the newest desktop first, then installs a compatible renderer if offered alone', async () => {

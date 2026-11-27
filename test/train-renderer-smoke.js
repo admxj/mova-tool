@@ -7,7 +7,7 @@
     '/train/station/search': ({ stationName }) => ({ groups: [{ stations: [{ stationName, stationCode: stationName === '北京南' ? 'VNP' : 'AOH', cityCode: stationName === '北京南' ? 'BJS' : 'SHA', cityName: stationName }] }] }),
     '/train/search': () => [{ trainNo: '240000G101', trainCode: 'G101', startTime: '08:00', edzNum: '4', edzPrice: 500 }],
     '/train/info': () => [],
-    '/passenger/list': () => ({ list: [{ source: 'ORG', id: 17, name: '测试', mobile: '13800000000' }] }),
+    '/passenger/list': () => ({ list: [{ source: 'ORG', id: 17, name: '测试', mobile: '13800000000' }, { source: 'ORG', id: 18, name: '同事' }] }),
     '/train/accounts/12306': () => ({ accountId: 42, riskStatus: 'NORMAL' }),
     '/train/orders/price': () => ({ quoteToken: 'mock-quote' }),
     '/v1/co/check/travel/apply/exemption/check': () => ({ passed: true }),
@@ -45,8 +45,29 @@
     await click('search');
     const query = calls.find(call => call.path === '/train/search').options.body;
     assert(query.fromStation === 'VNP' && query.toStation === 'AOH', 'Search must send selected station codes');
+    const cards = el('trains').querySelectorAll('.train-card');
+    assert(cards.length === 1, 'Search should render a visible train card');
+    assert(el('trains').textContent.includes('G101'), 'Train card should show the train code');
+    el('trains').querySelector('[data-seat-code="EDZ"]').click();
+    assert(el('trip').value === '0' && el('seat').value === '0', 'Seat chip should select the train and seat');
+    assert(!el('book').disabled, 'Seat chip should enable the booking jump');
+    assert(el('selection').textContent.includes('G101') && el('selection').textContent.includes('二等座'), 'Selection summary should name the chosen train and seat');
+    el('book').click();
+    assert(document.getElementById('tr-step-2').classList.contains('is-target'), 'Booking jump should highlight the passenger and pricing step');
     set('trip', '0', 'change'); set('seat', '0'); await click('info');
-    await click('load'); set('contact', '测试'); await click('prepare');
+    await click('load');
+    const passenger = el('passengers').querySelector('button.pax-item');
+    assert(passenger?.textContent.includes('测试'), 'Expected a visible enterprise passenger card');
+    assert(!passenger.textContent.includes('13800000000'), 'Passenger card must mask the phone number');
+    passenger.click();
+    assert(passenger.getAttribute('aria-pressed') === 'true', 'Clicking the passenger should select it');
+    passenger.click();
+    assert(passenger.getAttribute('aria-pressed') === 'false', 'Clicking the selected passenger should deselect it');
+    passenger.click();
+    assert(passenger.getAttribute('aria-pressed') === 'true', 'Clicking again should select the passenger');
+    el('passengers').querySelectorAll('.pax-item')[1].click();
+    assert(el('pax-hint').textContent.includes('已选 2 人'), 'Both passengers should remain selected');
+    set('contact', '测试'); await click('prepare');
     assert(!el('submit').disabled, 'Expected reservation enabled after precheck');
     window.confirm = () => false; await click('submit');
     assert(!calls.some(call => call.path === '/train/orders'), 'Cancellation must not reserve');
@@ -55,11 +76,11 @@
     await click('status');
     assert(el('output').textContent.includes('OCCUPY_SUCCESS'), 'Missing order status');
     set('from', '北京');
-    assert(!el('trip').value && !el('seat').value && el('submit').disabled && el('to').value === '上海虹桥', 'Editing one station must invalidate the trip without clearing the other station');
+    assert(!el('trip').value && !el('seat').value && el('submit').disabled && el('book').disabled && el('to').value === '上海虹桥', 'Editing one station must invalidate the trip without clearing the other station');
     assert(calls.every(call => call.service === (call.path.startsWith('/v1/') ? 'go' : 'java')), 'Incorrect API service');
     const price = calls.find(call => call.path === '/train/orders/price').options.body;
     const order = calls.find(call => call.path === '/train/orders').options.body;
-    assert(price.fromStationCode === 'VNP' && price.seatType === 'EDZ' && order.quoteToken === 'mock-quote' && order.accountId === 42 && order.passengerIds[0] === 17 && order.idempotentKey, 'Incorrect quote/reservation request');
+    assert(price.fromStationCode === 'VNP' && price.seatType === 'EDZ' && order.quoteToken === 'mock-quote' && order.accountId === 42 && order.passengerIds.join(',') === '17,18' && order.idempotentKey, 'Incorrect quote/reservation request');
   } finally {
     TMC.api = original.api; TMC.session.token = original.token; window.confirm = original.confirm;
     document.querySelector('[data-view="train"]').click();

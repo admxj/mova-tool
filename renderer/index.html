@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
+  <div id="update-status" class="update-status" role="status" aria-live="polite" hidden></div>
   <header class="topbar">
     <div class="brand">
       <img class="logo" src="./assets/tmc-logo.png" width="34" height="34" alt="TMC" />
@@ -201,18 +202,23 @@
             <label>车次 <select id="tr-trip"></select></label>
             <label>席别 <select id="tr-seat"></select></label>
           </div>
-          <div class="actions"><button class="primary" id="tr-search">查余票</button> <button class="ghost" id="tr-info">查经停</button></div>
+          <div class="actions"><button class="primary" id="tr-search">查余票</button> <button class="ghost" id="tr-info">查经停</button> <button class="ghost" id="tr-book" disabled>下一步：乘车人与验价</button></div>
+          <p class="hint" id="tr-summary" role="status" aria-live="polite">输入出发站、到达站和日期后点击「查余票」，车次列表会显示在这里。</p>
+          <div class="results train-list" id="tr-trains" aria-label="车次列表"></div>
         </section>
-        <section class="step">
+        <section class="step" id="tr-step-2">
           <div class="step-head"><span class="num">2</span><h3>乘车人、验价与校验</h3></div>
+          <p class="hint" id="tr-selection" role="status" aria-live="polite" hidden></p>
+          <div class="actions"><button class="ghost" id="tr-load">加载乘车人及绑定账号</button></div>
+          <p class="hint" id="tr-pax-hint" role="status">请先加载企业乘车人</p>
+          <div class="pax-list tr-pax-list" id="tr-passengers" role="group" aria-label="企业乘车人（可多选）"></div>
           <div class="grid">
-            <label>企业乘车人（可多选） <select id="tr-passengers" multiple></select></label>
             <label>联系人 <input id="tr-contact" /></label>
             <label>联系电话 <input id="tr-phone" type="tel" /></label>
             <label>申请单号（按需填写） <input id="tr-apply" /></label>
             <label>超标原因（按需填写） <input id="tr-reason" maxlength="500" /></label>
           </div>
-          <div class="actions"><button class="ghost" id="tr-load">加载乘车人及绑定账号</button> <button class="primary" id="tr-prepare">验价并校验</button> <button class="ghost" id="tr-confirm" disabled>确认差标结果</button></div>
+          <div class="actions"><button class="primary" id="tr-prepare">验价并校验</button> <button class="ghost" id="tr-confirm" disabled>确认差标结果</button></div>
         </section>
         <section class="step">
           <div class="step-head"><span class="num">3</span><h3>占座和订单查询</h3></div>

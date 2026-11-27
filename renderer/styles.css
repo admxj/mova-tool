@@ -35,6 +35,33 @@ code { font-family: var(--mono); font-size: 12px; color: #3b5b8c; background: #f
 
 /* ---------------- 顶栏 ---------------- */
 
+.update-status:not([hidden]) {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+.update-status::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: update-spin 0.8s linear infinite;
+}
+@keyframes update-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .update-status::before { animation: none; } }
+
 .topbar {
   display: flex;
   align-items: center;
@@ -125,6 +152,12 @@ code { font-family: var(--mono); font-size: 12px; color: #3b5b8c; background: #f
   box-shadow: var(--shadow);
 }
 .step.muted { opacity: 0.6; }
+.step { scroll-margin-top: 16px; }
+.step.is-target { border-color: var(--accent); animation: step-target 1.6s ease-out; }
+@keyframes step-target {
+  0% { box-shadow: 0 0 0 3px var(--accent-soft); }
+  100% { box-shadow: var(--shadow); }
+}
 .step.hidden, .hidden { display: none !important; }
 
 .step-head { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
@@ -237,6 +270,42 @@ details.jsonbox textarea {
 .muted-text { color: var(--muted); font-size: 11px; }
 .price { color: #c2410c; font-weight: 600; white-space: nowrap; }
 .empty { padding: 14px; color: #94a3b8; font-size: 12px; text-align: center; }
+
+/* ---------------- 火车票车次列表 ---------------- */
+
+.train-list { margin-top: 6px; max-height: 58vh; overflow: auto; overscroll-behavior: contain; padding-right: 2px; }
+.train-card { padding: 10px 12px; }
+.train-card.is-selected { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent) inset; }
+.train-pick {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 16px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+.train-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+.train-id { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.train-id b { font-size: 15px; color: #111827; }
+.train-tag { padding: 0 6px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 10px; line-height: 16px; }
+.train-tag--days { border-color: currentColor; color: var(--warn); }
+.train-route { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.train-end { display: flex; flex-direction: column; min-width: 0; }
+.train-end b { font-size: 15px; white-space: nowrap; }
+.train-end small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.train-arrow { color: var(--muted); font-size: 11px; line-height: 1.3; text-align: center; }
+.train-arrow small { display: block; font-size: 10px; white-space: nowrap; }
+.train-price { color: #c2410c; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.train-seats { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.seat-chip { padding: 3px 8px; border: 1px solid var(--border); border-radius: 999px; background: #fff; color: var(--text); font-size: 11px; line-height: 1.5; }
+.seat-chip b { font-weight: 600; }
+.seat-chip .price { font-size: 11px; }
+.seat-chip:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.seat-chip.is-out { opacity: 0.45; }
 
 .mini-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
 .mini-table th, .mini-table td {
@@ -463,6 +532,10 @@ button.ghost:disabled {
 .pax-item.active { border-color: #9dbcff; background: var(--accent-soft); }
 .pax-item b { font-weight: 600; }
 .pax-item .muted-text:first-of-type { margin-left: auto; }
+.tr-pax-list { max-height: 260px; overflow: auto; padding: 2px; }
+.tr-pax-list .pax-item { flex-wrap: wrap; }
+.tr-pax-list .pax-choice { min-width: 3.5em; text-align: right; color: var(--muted); }
+.tr-pax-list .active .pax-choice { color: var(--accent); font-weight: 600; }
 
 /* 可搜索城市下拉 */
 .combo-field { position: relative; }

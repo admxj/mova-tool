@@ -80,6 +80,23 @@ async function doHttp(options = {}) {
 
 let rendererStore;
 
+const stableVersion = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})$/;
+
+// 未打包时也允许检查更新，便于本地调试「检查更新」、加载状态与下载进度。
+// TMC_UPDATE_TEST_VERSION 仅用于开发模式模拟旧版本，从而拿到真实的新版本候选。
+function updateOptions() {
+  const dev = !app.isPackaged;
+  const testVersion = String(process.env.TMC_UPDATE_TEST_VERSION || '').trim();
+  return { dev, version: dev && stableVersion.test(testVersion) ? testVersion : app.getVersion() };
+}
+
+function rendererPublicKey() {
+  const keyPath = path.join(__dirname, 'renderer-update-public.pem');
+  if (fs.existsSync(keyPath)) return fs.readFileSync(keyPath);
+  const fromEnv = String(process.env.TMC_RENDERER_PUBLIC_KEY || '').trim();
+  return fromEnv || null;
+}
+
 async function showRenderer(win, patch) {
   rendererOrigin.use(patch);
   await loadRenderer(win);
@@ -219,10 +236,15 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  if (app.isPackaged && process.platform === 'darwin' && process.arch === 'arm64') {
-    const keyPath = path.join(__dirname, 'renderer-update-public.pem');
-    if (fs.existsSync(keyPath)) {
-      rendererStore = createRendererStore(path.join(app.getPath('userData'), 'renderer-updates'), app.getVersion(), fs.readFileSync(keyPath));
+  const updates = updateOptions();
+  if (process.platform === 'darwin' && process.arch === 'arm64' && (app.isPackaged || updates.dev)) {
+    const key = rendererPublicKey();
+    if (key) {
+      // 开发模式用临时目录，避免本地下发的界面包覆盖正在开发的 renderer。
+      const root = app.isPackaged
+        ? path.join(app.getPath('userData'), 'renderer-updates')
+        : path.join(app.getPath('temp'), `tmc-tool-dev-renderer-${process.pid}`);
+      rendererStore = createRendererStore(root, updates.version, key);
     }
   }
   protocol.handle(scheme, async (request) => {
@@ -241,10 +263,13 @@ app.whenReady().then(() => {
     shell.openExternal(url);
     return { ok: true };
   });
-  void createWindow().then(() => enableUpdates(electron, rendererStore && {
-    version: () => rendererStore.version,
-    activate: (win, version, bytes) => rendererStore.activate(version, bytes, (patch) => showRenderer(win, patch)),
-  }));
+  void createWindow().then(() => {
+    if (process.env.TMC_SMOKE === '1' || process.env.TMC_UPDATES === '0') return;
+    enableUpdates(electron, rendererStore && {
+      version: () => rendererStore.version,
+      activate: (win, version, bytes) => rendererStore.activate(version, bytes, (patch) => showRenderer(win, patch)),
+    }, updates);
+  });
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

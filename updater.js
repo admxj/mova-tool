@@ -115,25 +115,42 @@ async function downloadRenderer(update, onProgress, request) {
   return bytes;
 }
 
-function createUpdateCheck({ app, BrowserWindow, dialog, shell }, request = fetch, renderer) {
+function createUpdateCheck({ app, BrowserWindow, dialog, shell }, request = fetch, renderer, currentVersion) {
   let busy = false;
+  let promoteCheck;
   return async function check(interactive = false) {
-    if (busy) return;
+    if (busy) {
+      if (interactive) promoteCheck?.();
+      return;
+    }
     busy = true;
     const win = BrowserWindow.getAllWindows()[0];
     if (!win) { busy = false; return; }
     const show = (options) => dialog.showMessageBox(win, options);
     let accepted = false;
     let downloading = false;
+    const status = (phase, percent) => {
+      if (!win.isDestroyed()) win.webContents?.send('tmc:update-status', phase, percent);
+    };
+    let manual = false;
+    promoteCheck = () => {
+      if (manual) return;
+      manual = true;
+      status('checking');
+    };
     try {
-      const installed = app.getVersion();
+      if (interactive) promoteCheck();
+      const installed = typeof currentVersion === 'function' ? currentVersion() : currentVersion || app.getVersion();
       const releases = await listReleases(request);
+      promoteCheck = undefined;
       const current = renderer?.version() ?? installed;
       const { desktop, renderer: candidate } = selectUpdateTracks(releases, installed, current);
       const patch = renderer ? candidate : null;
+      if (!app.isPackaged) console.log('[updater] check', { installed, current, desktop: desktop?.version ?? null, renderer: patch?.version ?? null });
       if (win.isDestroyed()) return;
+      if (manual) status('idle');
       if (!desktop && !patch) {
-        if (interactive) await show({ message: `已是最新版本（${current}）` });
+        if (manual) await show({ message: `已是最新版本（${current}）` });
         return;
       }
       const update = desktop ?? patch;
@@ -144,10 +161,14 @@ function createUpdateCheck({ app, BrowserWindow, dialog, shell }, request = fetc
       accepted = true;
       downloading = true;
       win.setProgressBar(0);
+      status('downloading', 0);
       let last = -1;
       const progress = (ratio) => {
         const percent = Math.floor(ratio * 100);
-        if (percent !== last && !win.isDestroyed()) win.setProgressBar(ratio);
+        if (percent !== last && !win.isDestroyed()) {
+          win.setProgressBar(ratio);
+          status('downloading', percent);
+        }
         last = percent;
       };
       if (!desktop) {
@@ -159,20 +180,27 @@ function createUpdateCheck({ app, BrowserWindow, dialog, shell }, request = fetc
       const error = await shell.openPath(file);
       if (error) throw new Error(`${error}\n安装包已保存到：${file}`);
     } catch (error) {
-      if ((interactive || accepted) && !win.isDestroyed()) {
+      if (!app.isPackaged) console.error('[updater] check failed:', error.message);
+      promoteCheck = undefined;
+      if (manual || accepted) status('idle');
+      if ((manual || accepted) && !win.isDestroyed()) {
         await show({ type: 'error', message: '更新未完成', detail: error.message });
       }
     } finally {
-      if (downloading && !win.isDestroyed()) win.setProgressBar(-1);
+      if (downloading && !win.isDestroyed()) {
+        win.setProgressBar(-1);
+        status('idle');
+      }
       busy = false;
     }
   };
 }
 
-function enableUpdates(electron, renderer) {
+function enableUpdates(electron, renderer, options = {}) {
   const { app, Menu, MenuItem } = electron;
-  if (!app.isPackaged || process.platform !== 'darwin' || process.arch !== 'arm64') return;
-  const check = createUpdateCheck(electron, fetch, renderer);
+  if ((!app.isPackaged && !options.dev) || process.platform !== 'darwin' || process.arch !== 'arm64') return;
+  if (!app.isPackaged) console.log('[updater] enabled for development');
+  const check = createUpdateCheck(electron, fetch, renderer, options.version);
   const menu = Menu.getApplicationMenu();
   const appMenu = menu?.items[0]?.submenu;
   if (appMenu) {
