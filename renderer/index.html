@@ -9,6 +9,12 @@
 </head>
 <body>
   <div id="update-status" class="update-status" role="status" aria-live="polite" hidden></div>
+  <dialog id="update-dialog" class="update-dialog" aria-labelledby="update-title">
+    <h2 id="update-title">下载更新</h2>
+    <progress id="update-progress" max="100" value="0" aria-label="下载进度"></progress>
+    <p id="update-percent" role="status">0%</p>
+    <button type="button" class="ghost" id="update-cancel">取消下载</button>
+  </dialog>
   <header class="topbar">
     <div class="brand">
       <img class="logo" src="./assets/tmc-logo.png" width="34" height="34" alt="TMC" />

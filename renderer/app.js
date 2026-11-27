@@ -359,11 +359,45 @@
     }
     renderLogs();
     const updateStatus = $('update-status');
-    window.tmcBridge?.onUpdateStatus?.((phase, percent) => {
-      const message = phase === 'checking' ? '正在检查更新…' :
-        phase === 'downloading' ? `正在下载更新… ${percent}%` : '';
-      updateStatus.textContent = message;
-      updateStatus.hidden = !message;
+    const updateDialog = $('update-dialog');
+    const cancelButton = $('update-cancel');
+    const progress = $('update-progress');
+    const percentLabel = $('update-percent');
+    const bridge = window.tmcBridge;
+    let canceling = false;
+    async function cancelDownload() {
+      if (!updateDialog.open || cancelButton.disabled || !bridge?.cancelUpdate) return;
+      canceling = true;
+      cancelButton.disabled = true;
+      percentLabel.textContent = '正在取消下载…';
+      try { if (await bridge.cancelUpdate()) return; } catch { /* 允许重试 */ }
+      if (updateDialog.open && canceling) {
+        canceling = false;
+        cancelButton.disabled = false;
+        percentLabel.textContent = `未能取消 · ${progress.value}%`;
+      }
+    }
+    cancelButton.hidden = !bridge?.cancelUpdate;
+    cancelButton.addEventListener('click', cancelDownload);
+    updateDialog.addEventListener('cancel', event => { event.preventDefault(); void cancelDownload(); });
+    bridge?.onUpdateStatus?.((phase, percent) => {
+      updateStatus.textContent = phase === 'checking' ? '正在检查更新…' : '';
+      updateStatus.hidden = phase !== 'checking';
+      if (phase === 'downloading') {
+        progress.value = percent;
+        if (!canceling) percentLabel.textContent = `${progress.value}%`;
+        if (!updateDialog.open) {
+          cancelButton.disabled = false;
+          updateDialog.showModal();
+        }
+      } else if (phase === 'installing' && updateDialog.open) {
+        canceling = false;
+        cancelButton.disabled = true;
+        percentLabel.textContent = '下载完成，正在打开或应用更新…';
+      } else {
+        canceling = false;
+        if (updateDialog.open) updateDialog.close();
+      }
     });
     document.documentElement.dataset.tmcReady = '1';
   });

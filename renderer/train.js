@@ -12,6 +12,23 @@
   const lists = {};
   const pickers = {};
   const pick = id => pickers[id] ? pickers[id].selected : lists[id]?.[value(id) === '' ? -1 : Number(value(id))];
+  const searchFormKey = 'tmc.train.search.v1';
+  function saveSearchForm() {
+    try {
+      localStorage.setItem(searchFormKey, JSON.stringify({ from: pick('from'), to: pick('to'), date: value('date') }));
+    } catch { /* 存储不可用时不影响查询 */ }
+  }
+  function restoreSearchForm() {
+    let saved;
+    try { saved = JSON.parse(localStorage.getItem(searchFormKey)); } catch { /* 忽略损坏的记录 */ }
+    for (const side of ['from', 'to']) {
+      const station = saved?.[side];
+      pickers[side].reset(typeof station?.stationName === 'string' && station.stationName &&
+        typeof station?.stationCode === 'string' && station.stationCode ? station : undefined);
+    }
+    el('date').value = typeof saved?.date === 'string' ? saved.date : '';
+    if (!el('date').value) el('date').value = dateOffset(0);
+  }
   const seatSpecs = [
     ['edz', '二等座'], ['ydz', '一等座'], ['yxydz', '优选一等'], ['tdz', '特等座'], ['swz', '商务座'],
     ['yz', '硬座'], ['rz', '软座'], ['yw', '硬卧'], ['rw', '软卧'], ['dw', '动卧'], ['gjrw', '高级软卧'], ['wz', '无座'],
@@ -179,7 +196,7 @@
     previous = current;
     invalidate();
     accountId = undefined;
-    for (const picker of Object.values(pickers)) picker.reset();
+    restoreSearchForm();
     for (const id of ['trip', 'seat']) fill(id, [], () => '');
     renderPassengers([], '请先加载企业乘车人');
     for (const id of ['contact', 'phone', 'apply', 'reason', 'order-no']) el(id).value = '';
@@ -211,6 +228,7 @@
     return { trainDate: value('date'), fromStation: from.stationCode, toStation: to.stationCode };
   }
   function clearTrip() {
+    saveSearchForm();
     invalidate();
     fill('trip', [], () => '');
     fill('seat', [], () => '');
@@ -300,6 +318,7 @@
   });
   action('status', async guard => { const result = await flow.status(value('order-no')); guard(); output(result); });
   for (const id of ['from', 'to', 'date']) el(id).addEventListener('change', () => {
+    if (id === 'date') saveSearchForm();
     invalidate(); fill('trip', [], () => ''); fill('seat', [], () => ''); resetTrains(); controls();
   });
   el('trains').addEventListener('click', event => {
@@ -339,5 +358,5 @@
   });
   for (const id of ['seat', 'contact', 'phone', 'apply']) el(id).addEventListener('input', invalidate);
   document.querySelector('[data-view="train"]').addEventListener('click', syncContext);
-  el('date').value = dateOffset(0);
+  restoreSearchForm();
 })();

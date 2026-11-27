@@ -129,7 +129,7 @@
       input.setAttribute('aria-activedescendant', option.id);
       option.scrollIntoView({ block: 'nearest' });
     });
-    return { get selected() { return selected; }, close, reset() { selected = undefined; input.value = ''; close(); } };
+    return { get selected() { return selected; }, close, reset(station) { selected = station; input.value = station?.stationName || ''; close(); } };
   }
 
   const api = { normalizeGroups, createStationSearch, mount };

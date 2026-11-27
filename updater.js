@@ -1,7 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
-const { Transform } = require('node:stream');
+const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 
 const repo = 'admxj/mova-tool';
@@ -73,16 +73,22 @@ async function listReleases(request = fetch) {
   return releases;
 }
 
-async function downloadUpdate(update, root, onProgress, request = fetch) {
+function downloadSignal(timeout, cancellation) {
+  const deadline = AbortSignal.timeout(timeout);
+  return cancellation ? AbortSignal.any([deadline, cancellation]) : deadline;
+}
+
+async function downloadUpdate(update, root, onProgress, request = fetch, cancellation) {
   const dir = await fs.mkdtemp(path.join(root, 'tmc-update-'));
   const target = path.join(dir, update.name);
   try {
-    const signal = AbortSignal.timeout(20 * 60_000);
+    const signal = downloadSignal(20 * 60_000, cancellation);
+    signal.throwIfAborted();
     const response = await request(update.url, { signal });
     if (!response.ok || !response.body) throw new Error(`下载失败（HTTP ${response.status}）`);
     const hash = createHash('sha256');
     let total = 0;
-    await pipeline(response.body, new Transform({ transform(chunk, _encoding, done) {
+    await pipeline(Readable.fromWeb(response.body, { signal }), new Transform({ transform(chunk, _encoding, done) {
       total += chunk.length;
       if (total > update.size) return done(new Error('DMG 大小不匹配'));
       hash.update(chunk);
@@ -99,13 +105,14 @@ async function downloadUpdate(update, root, onProgress, request = fetch) {
   }
 }
 
-async function downloadRenderer(update, onProgress, request) {
-  const signal = AbortSignal.timeout(120_000);
+async function downloadRenderer(update, onProgress, request, cancellation) {
+  const signal = downloadSignal(120_000, cancellation);
+  signal.throwIfAborted();
   const response = await request(update.url, { signal });
   if (!response.ok || !response.body) throw new Error(`下载界面失败（HTTP ${response.status}）`);
   const bytes = Buffer.alloc(update.size);
   let total = 0;
-  for await (const chunk of response.body) {
+  for await (const chunk of Readable.fromWeb(response.body, { signal })) {
     if (total + chunk.byteLength > bytes.length) throw new Error('前端补丁大小不匹配');
     bytes.set(chunk, total);
     total += chunk.byteLength;
@@ -118,7 +125,8 @@ async function downloadRenderer(update, onProgress, request) {
 function createUpdateCheck({ app, BrowserWindow, dialog, shell }, request = fetch, renderer, currentVersion) {
   let busy = false;
   let promoteCheck;
-  return async function check(interactive = false) {
+  let activeDownload;
+  async function check(interactive = false) {
     if (busy) {
       if (interactive) promoteCheck?.();
       return;
@@ -128,7 +136,7 @@ function createUpdateCheck({ app, BrowserWindow, dialog, shell }, request = fetc
     if (!win) { busy = false; return; }
     const show = (options) => dialog.showMessageBox(win, options);
     let accepted = false;
-    let downloading = false;
+    let controller;
     const status = (phase, percent) => {
       if (!win.isDestroyed()) win.webContents?.send('tmc:update-status', phase, percent);
     };
@@ -159,7 +167,8 @@ function createUpdateCheck({ app, BrowserWindow, dialog, shell }, request = fetc
         buttons: ['升级', '取消'], defaultId: 0, cancelId: 1 });
       if (win.isDestroyed() || choice !== 0) return;
       accepted = true;
-      downloading = true;
+      controller = new AbortController();
+      activeDownload = { win, controller };
       win.setProgressBar(0);
       status('downloading', 0);
       let last = -1;
@@ -172,14 +181,24 @@ function createUpdateCheck({ app, BrowserWindow, dialog, shell }, request = fetc
         last = percent;
       };
       if (!desktop) {
-        const bytes = await downloadRenderer(patch, progress, request);
+        const bytes = await downloadRenderer(patch, progress, request, controller.signal);
+        controller.signal.throwIfAborted();
+        activeDownload = undefined;
+        status('installing');
         if (!win.isDestroyed()) await renderer.activate(win, patch.version, bytes);
         return;
       }
-      const file = await downloadUpdate(desktop, app.getPath('temp'), progress, request);
+      const file = await downloadUpdate(desktop, app.getPath('temp'), progress, request, controller.signal);
+      activeDownload = undefined;
+      if (controller.signal.aborted || win.isDestroyed()) {
+        await fs.rm(path.dirname(file), { recursive: true, force: true });
+        return;
+      }
+      status('installing');
       const error = await shell.openPath(file);
       if (error) throw new Error(`${error}\n安装包已保存到：${file}`);
     } catch (error) {
+      if (controller?.signal.aborted) return;
       if (!app.isPackaged) console.error('[updater] check failed:', error.message);
       promoteCheck = undefined;
       if (manual || accepted) status('idle');
@@ -187,13 +206,20 @@ function createUpdateCheck({ app, BrowserWindow, dialog, shell }, request = fetc
         await show({ type: 'error', message: '更新未完成', detail: error.message });
       }
     } finally {
-      if (downloading && !win.isDestroyed()) {
+      activeDownload = undefined;
+      if (controller && !win.isDestroyed()) {
         win.setProgressBar(-1);
         status('idle');
       }
       busy = false;
     }
+  }
+  check.cancel = (sender) => {
+    if (!activeDownload || activeDownload.win.isDestroyed() || activeDownload.win.webContents !== sender) return false;
+    activeDownload.controller.abort();
+    return true;
   };
+  return check;
 }
 
 function enableUpdates(electron, renderer, options = {}) {
@@ -201,6 +227,7 @@ function enableUpdates(electron, renderer, options = {}) {
   if ((!app.isPackaged && !options.dev) || process.platform !== 'darwin' || process.arch !== 'arm64') return;
   if (!app.isPackaged) console.log('[updater] enabled for development');
   const check = createUpdateCheck(electron, fetch, renderer, options.version);
+  electron.ipcMain.handle('tmc:cancel-update', event => check.cancel(event.sender));
   const menu = Menu.getApplicationMenu();
   const appMenu = menu?.items[0]?.submenu;
   if (appMenu) {

@@ -56,6 +56,7 @@ test('enables the update menu and background check in dev mode', { skip: process
   try {
     enableUpdates({
       app: { isPackaged: false },
+      ipcMain: { handle: (channel, listener) => { assert.equal(channel, 'tmc:cancel-update'); assert.equal(typeof listener, 'function'); } },
       Menu: { getApplicationMenu: () => ({ items: [{ submenu: { insert: (_index, item) => { inserted = item; } } }] }), setApplicationMenu() {} },
       MenuItem: function MenuItem(options) { Object.assign(this, options); },
       BrowserWindow: { getAllWindows: () => [{ isDestroyed: () => false, setProgressBar() {}, webContents: { send() {} } }] },
@@ -116,6 +117,40 @@ test('streams a verified image and removes a failed download', async (t) => {
   assert.equal(progress.at(-1), 1);
   await assert.rejects(downloadUpdate(update, dir, () => {}, async () => new Response('x'.repeat(asset.size))), /SHA-256/);
   assert.equal((await fs.readdir(dir)).length, 1);
+});
+
+test('cancel during download aborts transfer and removes the partial DMG', { timeout: 5000 }, async (t) => {
+  const dir = await fs.mkdtemp(path.join(tmpdir(), 'tmc-cancel-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const statuses = [];
+  let started, stream;
+  const streaming = new Promise(resolve => { started = resolve; });
+  const sender = { send: (_channel, phase, percent) => {
+    statuses.push([phase, percent]);
+    if (phase === 'downloading' && percent > 0) started();
+  } };
+  let opened = false;
+  const prompts = [];
+  const check = createUpdateCheck({
+    app: { getVersion: () => '1.0.0', getPath: () => dir },
+    BrowserWindow: { getAllWindows: () => [{ isDestroyed: () => false, setProgressBar() {}, webContents: sender }] },
+    dialog: { showMessageBox: async (_win, options) => { prompts.push(options.type); return { response: 0 }; } },
+    shell: { openPath: async () => { opened = true; return ''; } },
+  }, async (url) => url !== asset.browser_download_url ? Response.json([release]) : new Response(new ReadableStream({
+    start(controller) { stream = controller; controller.enqueue(Buffer.from(data.slice(0, 1))); },
+  })));
+  const pending = check();
+  await streaming;
+  const rejected = check.cancel?.({});
+  const canceled = check.cancel?.(sender);
+  if (!canceled) { stream.enqueue(Buffer.from(data.slice(1))); stream.close(); }
+  await pending;
+  assert.equal(rejected, false);
+  assert.equal(canceled, true);
+  assert.equal(opened, false);
+  assert.deepEqual(prompts, ['info']);
+  assert.deepEqual(await fs.readdir(dir), []);
+  assert.deepEqual(statuses.at(-1), ['idle', undefined]);
 });
 
 test('cancel skips downloads and upgrade opens a verified DMG', async (t) => {
