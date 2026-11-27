@@ -20,6 +20,7 @@
       <button class="tab active" data-view="flight">机票预订</button>
       <button class="tab" data-view="flight-after-sales">机票售后</button>
       <button class="tab" data-view="hotel">酒店</button>
+      <button class="tab" data-view="train">火车票</button>
       <button class="tab" data-view="login">登录</button>
       <button class="tab" data-view="settings">接口配置</button>
       <button class="tab" data-view="logs">请求日志 <span id="log-count" class="pill hidden">0</span></button>
@@ -189,6 +190,39 @@
       </div>
 
       <!-- ==================== 酒店 ==================== -->
+      <div class="view" id="view-train">
+        <div class="view-head"><div><h2>火车票预订</h2><p>查票 → 验价和业务校验 → 占座 → 查询状态。不提供支付或出票操作。</p></div></div>
+        <section class="step">
+          <div class="step-head"><span class="num">1</span><h3>查票和选席</h3></div>
+          <div class="grid">
+            <label>出发站关键词 <input id="tr-from-key" /></label>
+            <label>到达站关键词 <input id="tr-to-key" /></label>
+            <label>出发站 <select id="tr-from"></select></label>
+            <label>到达站 <select id="tr-to"></select></label>
+            <label>乘车日期 <input id="tr-date" type="date" /></label>
+            <label>车次 <select id="tr-trip"></select></label>
+            <label>席别 <select id="tr-seat"></select></label>
+          </div>
+          <div class="actions"><button id="tr-find-from">搜索出发站</button> <button id="tr-find-to">搜索到达站</button> <button id="tr-search">查余票</button> <button id="tr-info">查经停</button></div>
+        </section>
+        <section class="step">
+          <div class="step-head"><span class="num">2</span><h3>乘车人、验价与校验</h3></div>
+          <div class="grid">
+            <label>企业乘车人（可多选） <select id="tr-passengers" multiple></select></label>
+            <label>联系人 <input id="tr-contact" /></label>
+            <label>联系电话 <input id="tr-phone" type="tel" /></label>
+            <label>申请单号（按需填写） <input id="tr-apply" /></label>
+            <label>超标原因（按需填写） <input id="tr-reason" maxlength="500" /></label>
+          </div>
+          <div class="actions"><button id="tr-load">加载乘车人及绑定账号</button> <button id="tr-prepare">验价并校验</button> <button id="tr-confirm" disabled>确认差标结果</button></div>
+        </section>
+        <section class="step">
+          <div class="step-head"><span class="num">3</span><h3>占座和订单查询</h3></div>
+          <div class="grid"><label>订单号 <input id="tr-order-no" /></label></div>
+          <div class="actions"><button id="tr-submit" disabled>提交占座</button> <button id="tr-status">查询订单状态</button></div>
+        </section>
+        <div id="tr-output" aria-live="polite"></div>
+      </div>
       <div class="view" id="view-hotel">
         <div class="view-head">
           <div>
@@ -493,6 +527,8 @@
   <script src="./lib.js"></script>
   <script src="./booking-preview.js"></script>
   <script src="./flight.js"></script>
+  <script src="./train-booking.js"></script>
+  <script src="./train.js"></script>
   <script src="./hotel.js"></script>
   <script src="./air-refund.js"></script>
   <script src="./air-change.js"></script>

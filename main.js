@@ -112,12 +112,25 @@ function createWindow() {
       setTimeout(async () => {
         try {
           await shot('');
-          for (const view of ['hotel', 'login', 'settings', 'logs']) {
+          for (const view of ['hotel', 'train', 'login', 'settings', 'logs']) {
             await win.webContents.executeJavaScript(
               `document.querySelector('.tab[data-view="${view}"]').click();`,
             );
+            if (view === 'train') {
+              const initialized = await win.webContents.executeJavaScript(`
+                Boolean(document.querySelector('#view-train.active #tr-date')?.value &&
+                  document.querySelector('#tr-submit')?.disabled && window.TrainBooking?.createBooking)
+              `);
+              if (!initialized) throw new Error('Train booking view did not initialize');
+            }
             await new Promise((resolve) => setTimeout(resolve, 350));
             await shot(view);
+          }
+
+          const trainSmoke = path.join(__dirname, 'test', 'train-renderer-smoke.js');
+          if (fs.existsSync(trainSmoke)) {
+            await win.webContents.executeJavaScript(fs.readFileSync(trainSmoke, 'utf8'));
+            console.log('[smoke] train booking offline flow passed');
           }
 
           const stepsFile = process.env.TMC_SMOKE_STEPS_FILE;
