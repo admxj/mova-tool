@@ -45,26 +45,25 @@ test('selects only newer stable arm64 DMGs from the pinned repository', () => {
   assert.throws(() => selectUpdate({ ...release, assets: [{ ...asset, digest: null }] }, '1.0.0'));
 });
 
-test('with both offers, applying the renderer leaves desktop available on the next check', async () => {
+test('offers the newest desktop first, then installs a compatible renderer if offered alone', async () => {
   let running = '1.9.0';
   const applied = [];
   const prompts = [];
   const check = createUpdateCheck({
     app: { getVersion: () => '1.9.0' },
     BrowserWindow: { getAllWindows: () => [{ isDestroyed: () => false, setProgressBar() {} }] },
-    dialog: { showMessageBox: async (_win, options) => { prompts.push(options.buttons); return { response: prompts.length === 1 ? 0 : 2 }; } },
+    dialog: { showMessageBox: async (_win, options) => { prompts.push(options); return { response: prompts.length === 1 ? 1 : 0 }; } },
     shell: {},
-  }, async (url) => url.startsWith('https://api.github.com/') ? Response.json([release, patch('1.9.1')]) : new Response(data), {
+  }, async (url) => url.startsWith('https://api.github.com/') ? Response.json(prompts.length === 0 ? [release, patch('1.9.1')] : [patch('1.9.1')]) : new Response(data), {
     version: () => running,
     activate: async (_win, version, body) => { running = version; applied.push(body.toString()); },
   });
   await check();
   await check();
   assert.deepEqual(applied, [data]);
-  assert.deepEqual(prompts, [
-    ['更新界面', '下载新版 DMG', '打开 GitHub Release', '稍后'],
-    ['下载并打开 DMG', '打开 GitHub Release', '稍后'],
-  ]);
+  await check(true);
+  assert.deepEqual(prompts.map(prompt => prompt.message), ['发现新版本 1.10.0', '发现新版本 1.9.1', '已是最新版本（1.9.1）']);
+  for (const prompt of prompts.slice(0, 2)) assert.deepEqual(prompt.buttons, ['升级', '取消']);
 });
 
 test('streams a verified image and removes a failed download', async (t) => {
@@ -79,7 +78,7 @@ test('streams a verified image and removes a failed download', async (t) => {
   assert.equal((await fs.readdir(dir)).length, 1);
 });
 
-test('update prompt can open a verified DMG or the pinned Release page', async (t) => {
+test('cancel skips downloads and upgrade opens a verified DMG', async (t) => {
   const dir = await fs.mkdtemp(path.join(tmpdir(), 'tmc-update-flow-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const opened = [];
@@ -89,7 +88,7 @@ test('update prompt can open a verified DMG or the pinned Release page', async (
     app: { getVersion: () => '1.0.0', getPath: () => dir },
     BrowserWindow: { getAllWindows: () => [{ isDestroyed: () => false, setProgressBar: (p) => progress.push(p) }] },
     dialog: { showMessageBox: async (_win, options) => {
-      assert.deepEqual(options.buttons, ['下载并打开 DMG', '打开 GitHub Release', '稍后']);
+      assert.deepEqual(options.buttons, ['升级', '取消']);
       return { response: choice };
     } },
     shell: { openExternal: async (url) => opened.push(url), openPath: async (file) => {
@@ -98,7 +97,7 @@ test('update prompt can open a verified DMG or the pinned Release page', async (
     } },
   }, async (url) => url === asset.browser_download_url ? new Response(data) : Response.json([release]));
   await check();
-  assert.deepEqual(opened, ['https://github.com/admxj/mova-tool/releases/tag/v1.10.0']);
+  assert.deepEqual(opened, []);
   assert.deepEqual(progress, []);
   choice = 0;
   await check();

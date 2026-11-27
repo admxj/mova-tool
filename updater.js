@@ -128,29 +128,20 @@ function createUpdateCheck({ app, BrowserWindow, dialog, shell }, request = fetc
     try {
       const installed = app.getVersion();
       const releases = await listReleases(request);
-      const { desktop, renderer: candidate } = selectUpdateTracks(releases, installed, renderer?.version() ?? installed);
+      const current = renderer?.version() ?? installed;
+      const { desktop, renderer: candidate } = selectUpdateTracks(releases, installed, current);
       const patch = renderer ? candidate : null;
       if (win.isDestroyed()) return;
       if (!desktop && !patch) {
-        if (interactive) await show({ message: `没有可用更新（桌面 ${installed} / 界面 ${renderer?.version() ?? installed}）` });
+        if (interactive) await show({ message: `已是最新版本（${current}）` });
         return;
       }
-      const actions = [];
-      if (patch) actions.push(['renderer', '更新界面']);
-      if (desktop) actions.push(['desktop', patch ? '下载新版 DMG' : '下载并打开 DMG'], ['release', '打开 GitHub Release']);
-      actions.push(['later', '稍后']);
-      const detail = [patch && `界面 ${patch.version}：验签后重新加载窗口，不退出应用。请先保存未提交内容。`,
-        desktop && `桌面 ${desktop.version}：校验后打开 DMG，请手动替换安装。`].filter(Boolean).join('\n');
-      const { response: choice } = await show({ type: 'info', message: '发现可用更新', detail,
-        buttons: actions.map(([, label]) => label), defaultId: 0, cancelId: actions.length - 1 });
-      if (win.isDestroyed()) return;
-      const action = actions[choice]?.[0];
-      if (!action || action === 'later') return;
+      const update = desktop ?? patch;
+      const detail = desktop ? '下载后打开安装包，请手动替换安装。' : '升级会重新加载窗口，请先保存未提交内容。';
+      const { response: choice } = await show({ type: 'info', message: `发现新版本 ${update.version}`, detail,
+        buttons: ['升级', '取消'], defaultId: 0, cancelId: 1 });
+      if (win.isDestroyed() || choice !== 0) return;
       accepted = true;
-      if (action === 'release') {
-        await shell.openExternal(`https://github.com/${repo}/releases/tag/v${desktop.version}`);
-        return;
-      }
       downloading = true;
       win.setProgressBar(0);
       let last = -1;
@@ -159,7 +150,7 @@ function createUpdateCheck({ app, BrowserWindow, dialog, shell }, request = fetc
         if (percent !== last && !win.isDestroyed()) win.setProgressBar(ratio);
         last = percent;
       };
-      if (action === 'renderer') {
+      if (!desktop) {
         const bytes = await downloadRenderer(patch, progress, request);
         if (!win.isDestroyed()) await renderer.activate(win, patch.version, bytes);
         return;
