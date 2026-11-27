@@ -1,6 +1,6 @@
 {
   "name": "tmc-tool",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "TMC 机票 / 酒店 查询、下单、支付桌面调试工具",
   "productName": "TMC调试工具",
   "main": "main.js",
@@ -43,6 +43,7 @@
       "package.json"
     ],
     "asar": true,
+    "afterPack": "./scripts/sign-mac-adhoc.js",
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "renderer/assets/tmc-logo.png",
