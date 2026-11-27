@@ -97,9 +97,24 @@ function rendererPublicKey() {
   return fromEnv || null;
 }
 
+let loadedPatchVersion;
+
+function effectiveVersion(bundledVersion = app.getVersion()) {
+  return loadedPatchVersion ?? bundledVersion;
+}
+
+function showEffectiveVersion() {
+  app.setAboutPanelOptions({
+    applicationVersion: effectiveVersion(),
+    version: '', // 不另外展示 macOS 构建版本。
+  });
+}
+
 async function showRenderer(win, patch) {
   rendererOrigin.use(patch);
   await loadRenderer(win);
+  loadedPatchVersion = patch?.version;
+  showEffectiveVersion();
 }
 
 async function openInitialRenderer(win) {
@@ -172,6 +187,7 @@ function createWindow() {
       };
       setTimeout(async () => {
         try {
+          await initialLoad;
           await shot('');
           for (const view of ['hotel', 'train', 'login', 'settings', 'logs']) {
             await win.webContents.executeJavaScript(
@@ -266,7 +282,7 @@ app.whenReady().then(() => {
   void createWindow().then(() => {
     if (process.env.TMC_SMOKE === '1' || process.env.TMC_UPDATES === '0') return;
     enableUpdates(electron, rendererStore && {
-      version: () => rendererStore.version,
+      version: () => effectiveVersion(updates.version),
       activate: (win, version, bytes) => rendererStore.activate(version, bytes, (patch) => showRenderer(win, patch)),
     }, updates);
   });
