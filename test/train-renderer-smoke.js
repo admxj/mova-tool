@@ -1,7 +1,7 @@
 // Runs inside Electron's smoke renderer via executeJavaScript.
 (async () => {
   const { TMC } = window;
-  const original = { api: TMC.api, token: TMC.session.token, confirm: window.confirm };
+  const original = { api: TMC.api, token: TMC.session.token, userInfo: TMC.session.userInfo, confirm: window.confirm };
   const savedTrainForm = localStorage.getItem('tmc.train.search.v1');
   const calls = [];
   const routes = {
@@ -26,6 +26,7 @@
   };
   try {
     TMC.session.token = 'offline-smoke-token';
+    TMC.session.userInfo = { employeeId: 120686, employee_no: 'EMP-017' };
     TMC.api = async (service, path, options) => {
       calls.push({ service, path, options });
       assert(Object.hasOwn(routes, path), `Unexpected API ${path}`);
@@ -91,12 +92,14 @@
     assert(!el('trip').value && !el('seat').value && el('submit').disabled && el('book').disabled && el('to').value === '上海虹桥', 'Editing one station must invalidate the trip without clearing the other station');
     assert(calls.every(call => call.service === (call.path.startsWith('/v1/') ? 'go' : 'java')), 'Incorrect API service');
     const price = calls.find(call => call.path === '/train/orders/price').options.body;
+    const exemption = calls.find(call => call.path.endsWith('/apply/exemption/check')).options.body;
+    assert(exemption.employeeId === 120686 && !Object.hasOwn(exemption, 'employeeNo'), 'Exemption must send employeeId as an ID, not as an employee number');
     const order = calls.find(call => call.path === '/train/orders').options.body;
     assert(price.fromStationCode === 'VNP' && price.seatType === 'EDZ' && order.quoteToken === 'mock-quote' && order.accountId === 42 && order.passengerIds.join(',') === '17,18' && order.idempotentKey, 'Incorrect quote/reservation request');
   } finally {
     if (savedTrainForm === null) localStorage.removeItem('tmc.train.search.v1');
     else localStorage.setItem('tmc.train.search.v1', savedTrainForm);
-    TMC.api = original.api; TMC.session.token = original.token; window.confirm = original.confirm;
+    TMC.api = original.api; TMC.session.token = original.token; TMC.session.userInfo = original.userInfo; window.confirm = original.confirm;
     document.querySelector('[data-view="train"]').click();
   }
 })();

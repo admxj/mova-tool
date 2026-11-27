@@ -298,14 +298,16 @@
     const trip = pick('trip'), seat = pick('seat'), from = pick('from'), to = pick('to');
     if (!trip || !seat || !from || !to) throw Error('请选择车次及有余票的席别');
     if (!from.cityCode || !to.cityCode) throw Error('车站缺少业务城市编码');
-    const employeeNo = [session.userInfo?.employeeId, session.userInfo?.employee_no].map(id => String(id || '').trim()).find(id => /^\d+$/.test(id));
+    const employeeId = Number(session.userInfo?.employeeId);
+    const employeeNo = String(session.userInfo?.employee_no ?? '').trim();
+    const employee = Number.isSafeInteger(employeeId) && employeeId > 0 ? { employeeId } : employeeNo ? { employeeNo } : {};
     const result = await flow.prepare({
       quote: { trainDate: value('date'), fromStationCode: trip.fromStationCode || from.stationCode,
         fromStationName: trip.fromStationName || from.stationName, fromCityCode: from.cityCode, fromCityName: from.cityName,
         toStationCode: trip.toStationCode || to.stationCode, toStationName: trip.toStationName || to.stationName,
         toCityCode: to.cityCode, toCityName: to.cityName, trainNo: trip.trainNo, trainCode: trip.trainCode, seatType: seat.code },
       departTime: trip.startTime, accountId, passengerIds: [...passengerIds],
-      contactName: value('contact'), contactPhone: value('phone'), applyNo: value('apply'), employee: employeeNo ? { employeeNo } : {},
+      contactName: value('contact'), contactPhone: value('phone'), applyNo: value('apply'), employee,
     });
     guard(); showPrepared(result);
   });
